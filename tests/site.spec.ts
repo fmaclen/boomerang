@@ -110,12 +110,23 @@ for (const answer of [{}, { status: 404 }]) {
     await page.setViewportSize(WIDTHS.phone);
     await page.goto('/');
     await answered;
-    // Until there is a release, a phone shows Self-host alone.
-    if (answer.status) await expect(page.getByTestId('release')).toBeHidden();
-    else await expect(page.getByTestId('release-tag')).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Self-host with Docker' })).toBeVisible();
+    await expect(page.getByTestId(answer.status ? 'release' : 'release-tag')).toBeVisible();
     const note = await page.getByTestId('demo-note').locator('span').nth(1).boundingBox();
     const keys = await page.locator('header nav').boundingBox();
     expect(note!.x + note!.width + 12).toBeLessThanOrEqual(keys!.x);
     expect(keys!.x + keys!.width).toBeLessThanOrEqual(WIDTHS.phone.width);
   });
 }
+
+test('the demo note stays muted until a test runs, and quiets again after it', async ({ page }) => {
+  await offline(page);
+  await page.goto('/');
+  const note = page.getByTestId('demo-note');
+  const demo = page.frameLocator('iframe[title="Boomerang demo"]');
+  await demo.getByTestId('start').click();
+  await expect(note).toHaveAttribute('data-running', 'true');
+  await expect(demo.getByTestId('result')).toBeVisible({ timeout: 20_000 });
+  await demo.getByTestId('new-run').click();
+  await expect(note).toHaveAttribute('data-running', 'false');
+});
