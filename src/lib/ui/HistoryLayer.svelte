@@ -36,7 +36,7 @@
   const LAST = 'pr-(--inset)';
   /** The list's keys: Stop's height on a phone, where they stack. */
   const CK =
-    'grid h-10 place-items-center px-5 narrow:h-12 [transition:opacity_200ms_var(--ease-out),visibility_0s,transform_160ms_var(--ease-out),background-color_160ms_ease,color_160ms_ease,--lift_200ms_ease]';
+    'grid h-10 place-items-center px-6 narrow:h-12 [transition:opacity_200ms_var(--ease-out),visibility_0s,transform_160ms_var(--ease-out),background-color_160ms_ease,color_160ms_ease,--lift_200ms_ease]';
   const CK_LABEL = `${KEY_LABEL} [text-box:trim-both_cap_alphabetic]`;
 
   const rows = $derived(
@@ -80,7 +80,7 @@
          label at both ends; a phone runs the table edge to edge, smaller,
          with its text on the page's column at both ends. -->
     <div
-      class="hist-table grid w-max min-w-full grid-cols-[repeat(6,max-content)] justify-between gap-x-(--gap) [--gap:24px] [--inset:20px] [--pad:12px] [mask:linear-gradient(to_right,#000_calc(var(--edge,100%)-var(--fade-r,0px)),transparent_var(--edge,100%))] narrow:[--gap:16px] narrow:[--inset:var(--side)] narrow:[--pad:10px]"
+      class="hist-table grid w-max min-w-full grid-cols-[repeat(6,max-content)] justify-between gap-x-(--gap) [--gap:24px] [--inset:24px] [--pad:12px] [mask:linear-gradient(to_right,#000_calc(var(--edge,100%)-var(--fade-r,0px)),transparent_var(--edge,100%))] narrow:[--gap:16px] narrow:[--inset:var(--side)] narrow:[--pad:10px]"
     >
       <!-- The heads stay put as the rows scroll under them, over the page's ground once they do. A phone draws them a size under the units, with more room below. -->
       <div

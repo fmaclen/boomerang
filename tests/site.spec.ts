@@ -102,3 +102,20 @@ for (const [width, viewport] of Object.entries(WIDTHS)) {
     expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBe(viewport.height);
   });
 }
+
+for (const answer of [{}, { status: 404 }]) {
+  test(`on a phone, the note and the keys keep clear of each other ${answer.status ? 'before there is a release' : 'with a version in the key'}`, async ({ page }) => {
+    await offline(page, answer);
+    const answered = page.waitForResponse(/releases\/latest/);
+    await page.setViewportSize(WIDTHS.phone);
+    await page.goto('/');
+    await answered;
+    // Until there is a release, a phone shows Self-host alone.
+    if (answer.status) await expect(page.getByTestId('release')).toBeHidden();
+    else await expect(page.getByTestId('release-tag')).toBeVisible();
+    const note = await page.getByTestId('demo-note').locator('span').nth(1).boundingBox();
+    const keys = await page.locator('header nav').boundingBox();
+    expect(note!.x + note!.width + 12).toBeLessThanOrEqual(keys!.x);
+    expect(keys!.x + keys!.width).toBeLessThanOrEqual(WIDTHS.phone.width);
+  });
+}

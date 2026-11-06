@@ -43,7 +43,7 @@
   });
 
   /** A secondary key, as the app draws Stop and Clear history: hollow, an even hairline round the label. */
-  const KEY = 'glass hollow inline-flex h-10 items-center gap-2 px-3 sm:px-4 text-ink-2 transition-colors fine:hover:text-ink';
+  const KEY = 'glass hollow inline-flex h-10 items-center gap-2 px-6 text-ink-2 transition-colors fine:hover:text-ink';
   /** Trims a label to its capitals, so it sits on the middle of its key the way the app's labels do. */
   const TRIM = '[text-box:trim-both_cap_alphabetic]';
 </script>
@@ -70,12 +70,19 @@
   <header class="flex h-16 flex-none items-center justify-between gap-4 border-b border-ink/8 px-4 sm:px-6">
     <p class="m-0 flex min-w-0 items-center gap-3" data-testid="demo-note">
       <span class="size-2 flex-none rounded-full bg-lime shadow-[0_0_10px_rgba(161,255,89,0.8)]" aria-hidden="true"></span>
-      <span class="flex-none text-ink {TRIM} {KEY_LABEL}">Simulated demo</span>
+      <!-- On a phone it stacks on two lines, to leave the keys their room. -->
+      <span class="flex-none text-ink max-sm:w-min max-sm:leading-[1.5] {TRIM} {KEY_LABEL}">Simulated demo</span>
       <span class="ml-2 hidden truncate text-ink-3 md:block {TRIM} {KEY_LABEL}">Not a measurement of your connection</span>
     </p>
     <nav class="flex flex-none items-center gap-2" aria-label="Boomerang">
       <a class={KEY} href={GUIDE}><span class="{TRIM} {KEY_LABEL}">Self-host</span></a>
-      <a class={KEY} href={release?.url ?? RELEASES} data-testid="release" data-release={release ? 'shown' : 'hidden'}>
+      <!-- Until a release exists, a phone has no room for the releases link beside Self-host. -->
+      <a
+        class="{KEY} {release ? '' : 'max-sm:hidden'}"
+        href={release?.url ?? RELEASES}
+        data-testid="release"
+        data-release={release ? 'shown' : 'hidden'}
+      >
         {#if release}
           <span class="text-ink {TRIM} {KEY_LABEL}" data-testid="release-tag">{release.tag}</span>
         {:else}
