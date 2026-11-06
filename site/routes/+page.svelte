@@ -9,7 +9,7 @@
   import '../app.css';
   import { onMount } from 'svelte';
   import { installIcons } from '../../src/lib/ui/logo';
-  import { KEY_LABEL, LABEL } from '../../src/lib/ui/classes';
+  import { KEY_LABEL } from '../../src/lib/ui/classes';
 
   const SITE = 'https://boomerang.fernando.is';
   const GUIDE = 'https://github.com/fmaclen/boomerang/blob/master/docs/self-hosting.md';
@@ -66,12 +66,12 @@
 </svelte:head>
 
 <div class="flex h-dvh flex-col">
-  <!-- The bar is the app's own chrome: the note in the small capitals of its labels, the links as its secondary keys. -->
+  <!-- The bar is the app's own chrome: the note in its key labels, lit and dim like Quick and Long, and the links as its secondary keys. -->
   <header class="flex h-16 flex-none items-center justify-between gap-4 border-b border-ink/8 px-4 sm:px-6">
     <p class="m-0 flex min-w-0 items-center gap-3" data-testid="demo-note">
       <span class="size-2 flex-none rounded-full bg-lime shadow-[0_0_10px_rgba(161,255,89,0.8)]" aria-hidden="true"></span>
-      <span class="flex-none text-ink {TRIM} {LABEL}">Simulated demo</span>
-      <span class="ml-2 hidden truncate text-ink-3 md:block {TRIM} {LABEL}">Not a measurement of your connection</span>
+      <span class="flex-none text-ink {TRIM} {KEY_LABEL}">Simulated demo</span>
+      <span class="ml-2 hidden truncate text-ink-3 md:block {TRIM} {KEY_LABEL}">Not a measurement of your connection</span>
     </p>
     <nav class="flex flex-none items-center gap-2" aria-label="Boomerang">
       <a class={KEY} href={GUIDE}><span class="{TRIM} {KEY_LABEL}">Self-host</span></a>
