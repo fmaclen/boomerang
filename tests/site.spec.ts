@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import type { Result } from '../src/lib/engine/types';
 import { WIDTHS, expectNoHorizontalOverflow, readResult, runTest, screenshot } from './helpers';
 import { offline, siteReady } from './site';
@@ -55,7 +55,6 @@ test('the landing page names the latest release, says the demo is simulated, and
 
   await expect(page.getByTestId('release-tag')).toHaveText('v1.2.0');
   await expect(page.getByTestId('release')).toHaveAttribute('href', 'https://github.com/fmaclen/boomerang/releases/tag/v1.2.0');
-  await expect(page.getByTestId('demo-note')).toBeVisible();
   await expect(page.getByTestId('demo-note')).toContainText(/simulated/i);
 
   const plausible = page.locator('head script[data-domain]');
@@ -71,7 +70,8 @@ test('the landing page holds together on a phone', async ({ page }) => {
   await page.setViewportSize(WIDTHS.phone);
   await page.goto('/');
   await expect(page.getByTestId('release-tag')).toBeVisible();
-  await expect(page.getByTestId('demo-note')).toBeVisible();
+  // Each key's label stays on one line, a capital's height.
+  for (const label of ['Self-host', 'v1.2.0']) expect((await page.getByText(label, { exact: true }).boundingBox())!.height).toBeLessThan(12);
   await siteReady(page);
   await screenshot(page, 'site', 'phone');
   await expectNoHorizontalOverflow(page);
@@ -103,34 +103,48 @@ for (const [width, viewport] of Object.entries(WIDTHS)) {
   });
 }
 
-for (const answer of [{}, { status: 404 }]) {
-  test(`on a phone, the note keeps clear of the keys either side of it ${answer.status ? 'before there is a release' : 'with a version in the key'}`, async ({ page }) => {
-    await offline(page, answer);
-    const answered = page.waitForResponse(/releases\/latest/);
-    await page.setViewportSize(WIDTHS.phone);
-    await page.goto('/');
-    await answered;
-    await expect(page.getByRole('link', { name: 'Self-host with Docker' })).toBeVisible();
-    await expect(page.getByTestId(answer.status ? 'release' : 'release-tag')).toBeVisible();
-    const left = await page.getByRole('link', { name: 'Self-host with Docker' }).boundingBox();
-    const note = await page.getByTestId('demo-note').boundingBox();
-    const right = await page.getByTestId('release').boundingBox();
-    expect(left!.x + left!.width + 12).toBeLessThanOrEqual(note!.x);
-    expect(note!.x + note!.width + 12).toBeLessThanOrEqual(right!.x);
-    expect(right!.x + right!.width).toBeLessThanOrEqual(WIDTHS.phone.width);
-  });
+/** Over the next 1.2 s, the most the note and a key are ever on screen at once: 0 when one waits for the other. */
+function overlap(page: Page): Promise<number> {
+  return page.evaluate(
+    () =>
+      new Promise<number>((resolve) => {
+        const opacity = (selector: string) => +getComputedStyle(document.querySelector(selector)!).opacity;
+        const start = performance.now();
+        let worst = 0;
+        const tick = () => {
+          worst = Math.max(worst, Math.min(opacity('[data-testid=demo-note]'), opacity('[data-testid=release]')));
+          if (performance.now() - start < 1200) requestAnimationFrame(tick);
+          else resolve(worst);
+        };
+        tick();
+      }),
+  );
 }
 
-test('the demo note stays muted until a test runs, and quiets again after it', async ({ page }) => {
+test('the bar shows the keys until a test runs, the note while it runs, and the keys again after', async ({ page }) => {
   await offline(page);
   await page.goto('/');
   const note = page.getByTestId('demo-note');
+  const keys = [page.getByRole('link', { name: 'Self-host with Docker' }), page.getByTestId('release')];
   const demo = page.frameLocator('iframe[title="Boomerang demo"]');
+  for (const key of keys) await expect(key).toBeVisible();
+  await expect(note).toBeHidden();
+
+  const comingIn = overlap(page);
   await demo.getByTestId('start').click();
-  await expect(note).toHaveAttribute('data-running', 'true');
+  expect(await comingIn).toBe(0);
+  await expect(note).toBeVisible();
+  for (const key of keys) await expect(key).toBeHidden();
+
   await expect(demo.getByTestId('result')).toBeVisible({ timeout: 20_000 });
+  const goingHome = overlap(page);
   await demo.getByTestId('new-run').click();
+  // The bar leaves at the press, while the app is still on its way home.
   await expect(note).toHaveAttribute('data-running', 'false');
+  await expect(demo.locator('#dock')).toHaveAttribute('data-screen', 'run');
+  expect(await goingHome).toBe(0);
+  await expect(note).toBeHidden();
+  for (const key of keys) await expect(key).toBeVisible();
 });
 
 for (const answer of [{}, { status: 404 }]) {
