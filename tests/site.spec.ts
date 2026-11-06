@@ -83,7 +83,7 @@ test('with no release from GitHub, the version key links to the releases page in
   await page.goto('/');
   await answered;
   const key = page.getByTestId('release');
-  await expect(key).toHaveText('Releases');
+  await expect(key).toHaveAccessibleName('Releases');
   await expect(key).toHaveAttribute('href', 'https://github.com/fmaclen/boomerang/releases');
   await expect(page.getByTestId('release-tag')).toHaveCount(0);
   await expect(page.getByRole('link', { name: /Self-host/ })).toBeVisible();
@@ -104,7 +104,7 @@ for (const [width, viewport] of Object.entries(WIDTHS)) {
 }
 
 for (const answer of [{}, { status: 404 }]) {
-  test(`on a phone, the note and the keys keep clear of each other ${answer.status ? 'before there is a release' : 'with a version in the key'}`, async ({ page }) => {
+  test(`on a phone, the note keeps clear of the keys either side of it ${answer.status ? 'before there is a release' : 'with a version in the key'}`, async ({ page }) => {
     await offline(page, answer);
     const answered = page.waitForResponse(/releases\/latest/);
     await page.setViewportSize(WIDTHS.phone);
@@ -112,10 +112,12 @@ for (const answer of [{}, { status: 404 }]) {
     await answered;
     await expect(page.getByRole('link', { name: 'Self-host with Docker' })).toBeVisible();
     await expect(page.getByTestId(answer.status ? 'release' : 'release-tag')).toBeVisible();
-    const note = await page.getByTestId('demo-note').locator('span').nth(1).boundingBox();
-    const keys = await page.locator('header nav').boundingBox();
-    expect(note!.x + note!.width + 12).toBeLessThanOrEqual(keys!.x);
-    expect(keys!.x + keys!.width).toBeLessThanOrEqual(WIDTHS.phone.width);
+    const left = await page.getByRole('link', { name: 'Self-host with Docker' }).boundingBox();
+    const note = await page.getByTestId('demo-note').boundingBox();
+    const right = await page.getByTestId('release').boundingBox();
+    expect(left!.x + left!.width + 12).toBeLessThanOrEqual(note!.x);
+    expect(note!.x + note!.width + 12).toBeLessThanOrEqual(right!.x);
+    expect(right!.x + right!.width).toBeLessThanOrEqual(WIDTHS.phone.width);
   });
 }
 
@@ -130,3 +132,18 @@ test('the demo note stays muted until a test runs, and quiets again after it', a
   await demo.getByTestId('new-run').click();
   await expect(note).toHaveAttribute('data-running', 'false');
 });
+
+for (const answer of [{}, { status: 404 }]) {
+  test(`the demo note sits in the middle of the bar, between Self-host and the release ${answer.status ? 'before there is a release' : 'with a version'}`, async ({ page }) => {
+    await offline(page, answer);
+    for (const viewport of Object.values(WIDTHS)) {
+      await page.setViewportSize(viewport);
+      const answered = page.waitForResponse(/releases\/latest/);
+      await page.goto('/');
+      await answered;
+      await expect(page.getByTestId('release')).toBeVisible();
+      const note = await page.getByTestId('demo-note').boundingBox();
+      expect(note!.x + note!.width / 2).toBeCloseTo(viewport.width / 2, 0);
+    }
+  });
+}
