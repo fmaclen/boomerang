@@ -1,0 +1,2 @@
+# The demo is a single-page app under /demo/: its History has an address of its own.
+/demo/history /demo/index.html 200

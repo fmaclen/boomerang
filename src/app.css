@@ -1,0 +1,197 @@
+/* Tailwind, the page's tokens, and the few rules utilities cannot write:
+   the bundled font, the animated custom properties, the logo's throw, and
+   the keys' glass and rim light. Everything else is utilities in the markup;
+   script sets the moving parts' transforms and opacities every frame (see
+   lib/ui/director.ts). */
+
+@import 'tailwindcss' source('.');
+
+/* The wide layout: three columns. Anything narrower or shorter is the phone's one column. */
+@custom-variant wide (@media (min-width: 900px) and (min-height: 560px));
+@custom-variant narrow (@media not ((min-width: 900px) and (min-height: 560px)));
+/* A mouse or a trackpad, where hover means a resting cursor. */
+@custom-variant fine (@media (hover: hover) and (pointer: fine));
+
+@theme {
+  --font-sans: 'Archivo', system-ui, sans-serif;
+  --color-ground: #080d0c;
+  --color-lime: #a1ff59;
+  --color-orange: #ff7a30;
+  --color-ink: #f1f7eb;
+  --color-ink-2: rgba(241, 247, 235, 0.68);
+  --color-ink-3: rgba(241, 247, 235, 0.42);
+  /* Destructive actions, a soft red well clear of upload's orange. */
+  --color-red: #ff6b6b;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+@theme inline {
+  /* The logo's throw (see ui/Logo.svelte). Each arc flies --d font units the
+     way it points and home again, after --delay; its two echoes stop at half
+     the way and where it started, at 0.8 and 0.64 its size and 0.68 and 0.36
+     its opacity, and fade as it returns. Each stage has its own easing, which
+     no utility can write. Inline, so --delay is read on each arc rather than
+     settled once at the root. */
+  --animate-lead: lead 620ms var(--delay, 0ms) both;
+  --animate-echo-1: echo-1 620ms var(--delay, 0ms) both;
+  --animate-echo-2: echo-2 620ms var(--delay, 0ms) both;
+  @keyframes lead {
+    0% { transform: translateY(0); animation-timing-function: cubic-bezier(0.2, 0.75, 0.35, 1); }
+    34% { transform: translateY(calc(var(--d) * -1px)); animation-timing-function: cubic-bezier(0.5, 0, 0.3, 1); }
+    76% { transform: translateY(calc(var(--d) * 0.05px)); animation-timing-function: cubic-bezier(0.3, 0, 0.4, 1); }
+    100% { transform: translateY(0); }
+  }
+  @keyframes echo-1 {
+    0% { transform: translateY(0) scale(1); opacity: 0; animation-timing-function: cubic-bezier(0.2, 0.75, 0.35, 1); }
+    34% { transform: translateY(calc(var(--d) * -0.5px)) scale(0.8); opacity: 0.68; animation-timing-function: cubic-bezier(0.5, 0, 0.3, 1); }
+    70% { transform: translateY(0) scale(0.92); opacity: 0; }
+    100% { transform: translateY(0) scale(1); opacity: 0; }
+  }
+  @keyframes echo-2 {
+    0% { transform: translateY(0) scale(1); opacity: 0; animation-timing-function: cubic-bezier(0.2, 0.75, 0.35, 1); }
+    34% { transform: translateY(0) scale(0.64); opacity: 0.36; animation-timing-function: cubic-bezier(0.5, 0, 0.3, 1); }
+    64% { transform: translateY(0) scale(0.85); opacity: 0; }
+    100% { transform: translateY(0) scale(1); opacity: 0; }
+  }
+}
+
+@font-face {
+  font-family: 'Archivo';
+  src: url('./lib/fonts/archivo.woff2') format('woff2');
+  font-weight: 100 900;
+  font-stretch: 62% 125%;
+  font-display: block;
+}
+
+/* How far a press sweeps the light round a key's rim. */
+@property --kick { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+/* How far a hollow key's outline is lifted: 0 at rest, 1 under the cursor, more pressed. */
+@property --lift { syntax: '<number>'; inherits: true; initial-value: 0; }
+@keyframes rim-sweep { from { --kick: 0deg; } to { --kick: 360deg; } }
+
+:root {
+  /* The column every screen shares. The phone's side margins match Safari's
+     own toolbar, 34px in from each edge; the wide layout keeps to 360px. */
+  --col: min(380px, calc(100vw - 68px));
+  /* The swarm's size, which the eye's type scales with; script sets it. */
+  --s: 200px;
+  /* Glass: a dark, see-through face that blurs the scene behind it. */
+  --glass: rgba(24, 34, 30, 0.5);
+  --glass-down: rgba(36, 48, 43, 0.62);
+  --glass-blur: blur(18px) saturate(1.5);
+}
+@media (min-width: 900px) and (min-height: 560px) {
+  :root { --col: 360px; --ui-max: 1120px; }
+}
+
+@layer base {
+  button { cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--color-ink); outline-offset: 3px; }
+}
+
+@layer components {
+  /* Every key is glass, the way iOS draws its own buttons: a dark see-through
+     face over the scene, one soft shadow under it, and a hairline rim of light
+     brightest on one edge. The light follows the hand (the cursor, or the
+     phone's tilt), drifts slowly along the rim until there is one, and
+     sweeps once round it on a press. Script sets per key where the bright
+     edge sits (--hand), how strongly it is lit (--hi) and how much light the
+     whole rim catches when the light is right over the key (--even). */
+  .glass {
+    position: relative; isolation: isolate; box-sizing: border-box; border-radius: 999px;
+    background-color: var(--glass);
+    -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+    box-shadow: 0 14px 28px -14px rgba(0, 0, 0, 0.8),
+      inset 0 -12px 16px -14px rgba(0, 0, 0, 0.7), inset 0 14px 18px -16px rgba(255, 255, 255, 0.12);
+    transition: transform 160ms var(--ease-out), background-color 160ms ease;
+  }
+  .glass::before {
+    content: ''; position: absolute; inset: 0; z-index: 1; border-radius: inherit; padding: var(--rim-w, 1px); pointer-events: none;
+    --l: var(--hi, 1); --e: var(--even, 0);
+    background: conic-gradient(from calc(var(--hand, -40deg) + var(--kick)),
+      rgb(var(--rim-rgb, 255 255 255) / calc(0.85 * var(--l) + var(--e))), rgb(var(--rim-rgb, 255 255 255) / calc(0.22 * var(--l) + var(--e))) 45deg,
+      rgb(var(--rim-rgb, 255 255 255) / calc(0.05 * var(--l) + var(--e))) 110deg, rgb(var(--rim-rgb, 255 255 255) / calc(0.4 * var(--l) + var(--e))) 180deg,
+      rgb(var(--rim-rgb, 255 255 255) / calc(0.05 * var(--l) + var(--e))) 250deg, rgb(var(--rim-rgb, 255 255 255) / calc(0.22 * var(--l) + var(--e))) 315deg,
+      rgb(var(--rim-rgb, 255 255 255) / calc(0.85 * var(--l) + var(--e))));
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude;
+  }
+  .glass.kick::before { animation: rim-sweep 560ms var(--ease-out); }
+  /* Keys come in three tiers. Start, the one primary, is glass lit a soft
+     lime (see .start). Secondary keys, Stop and Clear history, are hollow:
+     an even hairline round the label and no glass at all. Every other key
+     is glass. --hollow runs from 0, glass, to 1, hollow, so the bottom key
+     can turn from one into the other as it opens into Stop and lights
+     into New test. */
+  .hollow, .dkey {
+    --f: calc(1 - var(--hollow, 0));
+    background-color: rgb(24 34 30 / calc(0.5 * var(--f)));
+    -webkit-backdrop-filter: blur(calc(18px * var(--f))) saturate(calc(1 + 0.5 * var(--f)));
+    backdrop-filter: blur(calc(18px * var(--f))) saturate(calc(1 + 0.5 * var(--f)));
+    box-shadow: 0 14px 28px -14px rgb(0 0 0 / calc(0.8 * var(--f))),
+      inset 0 -12px 16px -14px rgb(0 0 0 / calc(0.7 * var(--f))), inset 0 14px 18px -16px rgb(255 255 255 / calc(0.12 * var(--f)));
+  }
+  .hollow { --hollow: 1; }
+  /* A hollow key's hairline is even at rest. Lifted, it brightens and
+     catches the glass keys' rim light too, brightest on the edge facing
+     the light. */
+  .hollow::before, .dkey::before {
+    --l: calc(var(--hi, 1) * (var(--f) + 0.6 * var(--lift) * var(--hollow, 0)));
+    --e: calc(var(--even, 0) * var(--f) + (0.3 + 0.1 * var(--lift)) * var(--hollow, 0));
+  }
+  /* A pressed key darkens and gives a little. Start never does (see .start).
+     The two press rules stay apart: written as one selector list, the
+     minifier ships them as one :is(), whose weight is the heavier selector's,
+     and that outweighed Start's own rule and every key's colour. */
+  .glass:not(.start):active { background-color: var(--glass-down); transform: scale(0.97); }
+  .dkey { transition: transform 160ms var(--ease-out), background-color 160ms ease, --lift 200ms ease; }
+  .dock:has(.action:active) .dkey { background-color: var(--glass-down); transform: scale(0.97); }
+  /* Stop and Clear history answer the cursor the way the glass keys do,
+     in light: the outline lifts and catches the rim light. Pressed, the
+     outline lifts further and the key fills with a faint light rather than
+     with glass, and still gives a little. */
+  @media (hover: hover) and (pointer: fine) {
+    .hollow:hover, .dock:has(.action:hover) .dkey { --lift: 1; }
+    .hollow:active, .dock:has(.action:active) .dkey {
+      --lift: 1.6;
+      background-color: rgb(calc(36 * var(--f) + 241 * var(--hollow, 0)) calc(48 * var(--f) + 247 * var(--hollow, 0)) calc(43 * var(--f) + 235 * var(--hollow, 0)) / calc(0.62 * var(--f) + 0.06 * var(--hollow, 0)));
+    }
+  }
+  /* Start is the primary key and the only tinted one: glass filled with
+     download's own lime, lit from above like the other keys and shaded at
+     its foot, so it is the brightest thing on the idle screen. The
+     boomerangs drifting behind it show through as faint smudges. */
+  .start {
+    --rim-w: 1.5px; --rim-rgb: 246 255 238; background-color: rgba(161, 255, 89, 0.94);
+    background-image: radial-gradient(110% 80% at 50% 0%, rgb(240 255 228 / calc(0.38 + 0.14 * var(--glow, 0))), rgba(240, 255, 228, 0) 65%),
+      radial-gradient(90% 55% at 50% 100%, rgba(52, 110, 14, 0.26), rgba(52, 110, 14, 0) 100%);
+    -webkit-backdrop-filter: blur(16px) saturate(1.6) brightness(1.06); backdrop-filter: blur(16px) saturate(1.6) brightness(1.06);
+    color: #0d2205;
+    /* Under a resting cursor the disc stands off the scene on a deeper
+       shadow, its top light brightens, and a halo of its own lime spreads
+       round it. Script sets how far (--hov, and --glow, which breathes). */
+    box-shadow: 0 calc(14px + 12px * var(--hov, 0)) calc(28px + 24px * var(--hov, 0)) -14px rgb(0 0 0 / calc(0.8 + 0.15 * var(--hov, 0))),
+      0 0 calc(var(--s) * 0.2) calc(var(--s) * 0.015) rgb(161 255 89 / calc(0.3 * var(--glow, 0))),
+      inset 0 -12px 16px -14px rgba(0, 0, 0, 0.7), inset 0 14px 18px -16px rgba(255, 255, 255, 0.12);
+  }
+  /* A press never moves Start: the touch shows only in light, its face
+     lightening and a comet running round its rim, so the exit sets off from
+     rest at full size. Script moves the whole disc on the exit. */
+  .start.glass, .start.glass:active { transition: none; transform: none; }
+  /* The comet: the rim's own light sent once round the disc from the touch.
+     Script sets where its head is (--sweep) and how lit it is (--sweep-a). */
+  .start::after {
+    content: ''; position: absolute; inset: 0; z-index: 1; border-radius: inherit; padding: var(--rim-w); pointer-events: none;
+    opacity: var(--sweep-a, 0);
+    background: conic-gradient(from calc(var(--sweep, 0deg) - 120deg),
+      rgb(var(--rim-rgb) / 0) 0deg, rgb(var(--rim-rgb) / 0.3) 80deg, rgb(var(--rim-rgb) / 0.9) 118deg, rgb(var(--rim-rgb) / 0) 132deg);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    /* The rim keeps its light where it is; a press still darkens the key. */
+    .glass.kick::before { animation: none; }
+    .glass:not(.start):active { transform: none; }
+    .dock:has(.action:active) .dkey { transform: none; }
+  }
+}

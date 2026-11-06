@@ -1,0 +1,85 @@
+name: Bug report
+description: Something on the page or the box doesn't work as it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Triage starts from this report alone, so every field counts. Search the
+        open issues first, and file one bug per issue.
+  - type: input
+    id: version
+    attributes:
+      label: Version or image tag
+      description: The image tag you run, or the commit if you built from source.
+      placeholder: ghcr.io/fmaclen/boomerang:1.2.0
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and OS
+      description: With versions, and the device if it's a phone or tablet.
+      placeholder: Safari 26.1 on iOS 26.1, iPhone 17
+    validations:
+      required: true
+  - type: input
+    id: box-mode
+    attributes:
+      label: Box mode
+      description: Where your box keeps runs, as set by its environment variables. Write "default" if you set none.
+    validations:
+      required: true
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: How it's deployed
+      description: How the browser reaches the box.
+      options:
+        - Direct (the box's port on the LAN or a tailnet address)
+        - Behind a reverse proxy (Caddy, nginx, Traefik, …)
+        - Through a tunnel (Cloudflare Tunnel, a Tailscale relay, …)
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: deployment-details
+    attributes:
+      label: Deployment details
+      description: Your compose file or `docker run` command, and the proxy or tunnel config if there is one.
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: From opening the page, numbered, so someone else can follow them and see the bug.
+      placeholder: |
+        1. Open the page and choose Long
+        2. Press Start
+        3. …
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual
+    validations:
+      required: true
+  - type: textarea
+    id: media
+    attributes:
+      label: Screenshots or a screen recording
+      description: Drag files in here. Anything visible on the page needs one.
+  - type: textarea
+    id: console
+    attributes:
+      label: Console errors
+      description: Paste the browser console's output from the moment the bug happens. Write "none" if it's empty.
+      render: text
+    validations:
+      required: true

@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Setting up a box
+    url: https://github.com/fmaclen/boomerang/blob/master/docs/self-hosting.md
+    about: Installing Boomerang, putting it behind a proxy, and updating it.

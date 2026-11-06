@@ -1,0 +1,8 @@
+node_modules
+.worktrees
+.git
+build
+.svelte-kit
+test-results
+screenshots
+.env

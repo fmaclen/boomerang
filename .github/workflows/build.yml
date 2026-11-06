@@ -1,0 +1,64 @@
+name: Build & publish
+
+on:
+  workflow_run:
+    workflows: ['Version & release']
+    types:
+      - completed
+
+jobs:
+  docker:
+    name: Docker image
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write # to push to ghcr.io with the workflow's own token
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: master # the release commit semantic-release just pushed
+          fetch-depth: 0
+
+      # Build the latest release tag, not master: a run that cut no release
+      # then republishes the same source instead of unreleased commits.
+      - name: Check out the latest release
+        id: release
+        run: |
+          version=$(git describe --tags --abbrev=0)
+          git checkout "$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & publish
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: web
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/${{ github.repository }}:${{ steps.release.outputs.version }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.release.outputs.version }}
+
+  # Landing page: Cloudflare Pages deploy, owned by issue #7.
+  # Add a `landing` job here, gated on the same
+  # `github.event.workflow_run.conclusion == 'success'` condition as `docker`.

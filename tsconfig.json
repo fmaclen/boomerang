@@ -1,0 +1,11 @@
+{
+  "extends": "$app/tsconfig",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["$app/types", "node", "bun"],
+    "strict": true
+  },
+  "include": ["src", "server", "tests", "vite.config.ts", "playwright.config.ts"],
+  "exclude": ["src/service-worker"]
+}

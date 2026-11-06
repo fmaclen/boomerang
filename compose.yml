@@ -1,0 +1,23 @@
+# The box: the page, the test endpoints and the run store, in one container.
+# Runs are kept in the `runs` volume.
+name: boomerang
+
+services:
+  web:
+    # `up` pulls the published image; `up --build` builds this checkout instead.
+    image: ghcr.io/fmaclen/boomerang:latest
+    build:
+      context: .
+      target: web
+    ports:
+      - "127.0.0.1:24610:3000"
+    volumes:
+      - runs:/data
+    environment:
+      # `HISTORY=browser docker compose up -d` keeps runs in each visitor's
+      # browser instead.
+      HISTORY: ${HISTORY:-box}
+    restart: unless-stopped
+
+volumes:
+  runs:
