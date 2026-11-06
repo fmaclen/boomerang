@@ -12,8 +12,8 @@
   their top there (`.pinned`, see history.ts) so the list grows downwards. On
   a phone the actions sit at the foot of the layer, where the bottom key
   sits on the start screen, and the rows scroll above them.
-  The layer sets the type's sizes (--fs, --lab), so the empty state's words
-  take the table's.
+  The layer sets the type's sizes (--fs, --lab), so the empty state's line
+  takes the table's.
 -->
 <script lang="ts">
   import { formatMs, formatRate, historyMode } from '../engine';
@@ -153,9 +153,9 @@
       </div>
     </div>
   </div>
-  <!-- No runs yet: said plainly where Start sits in idle, as a column head over a row's value. -->
+  <!-- No runs yet: said plainly where Start sits in idle, in a key's lettering over a row's value. -->
   <div class="invisible absolute inset-x-0 top-1/2 grid justify-items-center gap-y-2.5 text-center opacity-0 [transform:translateY(-50%)]" id="histEmpty">
-    <p class="{HEAD} text-ink-3">No tests yet</p>
+    <p class="{KEY_LABEL} whitespace-nowrap text-ink-3">No tests yet</p>
     <p class={VALUE}>Finished tests are kept {historyMode() === 'browser' ? 'in this browser' : 'on this server'}</p>
   </div>
 </section>
