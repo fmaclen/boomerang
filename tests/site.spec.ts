@@ -147,3 +147,19 @@ for (const answer of [{}, { status: 404 }]) {
     }
   });
 }
+
+for (const [width, viewport] of Object.entries(WIDTHS)) {
+  test(`on a ${width}, the bar's keys line up with the app's GitHub and History keys under them`, async ({ page }) => {
+    await offline(page);
+    await page.setViewportSize(viewport);
+    await page.goto('/');
+    await siteReady(page);
+    const demo = page.frameLocator('iframe[title="Boomerang demo"]');
+    const github = await demo.locator('#gh').boundingBox();
+    const history = await demo.locator('#menu').boundingBox();
+    const self = await page.getByRole('link', { name: 'Self-host with Docker' }).boundingBox();
+    const release = await page.getByTestId('release').boundingBox();
+    expect(self!.x).toBeCloseTo(github!.x, 0);
+    expect(release!.x + release!.width).toBeCloseTo(history!.x + history!.width, 0);
+  });
+}
