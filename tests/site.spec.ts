@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import type { Result } from '../src/lib/engine/types';
 import { WIDTHS, expectNoHorizontalOverflow, readResult, runTest, screenshot } from './helpers';
 import { offline, siteReady } from './site';
@@ -55,7 +55,6 @@ test('the landing page names the latest release, says the demo is simulated, and
 
   await expect(page.getByTestId('release-tag')).toHaveText('v1.2.0');
   await expect(page.getByTestId('release')).toHaveAttribute('href', 'https://github.com/fmaclen/boomerang/releases/tag/v1.2.0');
-  await expect(page.getByTestId('demo-note')).toBeVisible();
   await expect(page.getByTestId('demo-note')).toContainText(/simulated/i);
 
   const plausible = page.locator('head script[data-domain]');
@@ -71,7 +70,8 @@ test('the landing page holds together on a phone', async ({ page }) => {
   await page.setViewportSize(WIDTHS.phone);
   await page.goto('/');
   await expect(page.getByTestId('release-tag')).toBeVisible();
-  await expect(page.getByTestId('demo-note')).toBeVisible();
+  // Each key's label stays on one line, a capital's height.
+  for (const label of ['Self-host', 'v1.2.0']) expect((await page.getByText(label, { exact: true }).boundingBox())!.height).toBeLessThan(12);
   await siteReady(page);
   await screenshot(page, 'site', 'phone');
   await expectNoHorizontalOverflow(page);
@@ -83,7 +83,7 @@ test('with no release from GitHub, the version key links to the releases page in
   await page.goto('/');
   await answered;
   const key = page.getByTestId('release');
-  await expect(key).toHaveText('Releases');
+  await expect(key).toHaveAccessibleName('Releases');
   await expect(key).toHaveAttribute('href', 'https://github.com/fmaclen/boomerang/releases');
   await expect(page.getByTestId('release-tag')).toHaveCount(0);
   await expect(page.getByRole('link', { name: /Self-host/ })).toBeVisible();
@@ -100,5 +100,80 @@ for (const [width, viewport] of Object.entries(WIDTHS)) {
     expect(frame!.width).toBe(viewport.width);
     expect(frame!.y + frame!.height).toBe(viewport.height);
     expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBe(viewport.height);
+  });
+}
+
+/** Over the next 1.2 s, the most the note and a key are ever on screen at once: 0 when one waits for the other. */
+function overlap(page: Page): Promise<number> {
+  return page.evaluate(
+    () =>
+      new Promise<number>((resolve) => {
+        const opacity = (selector: string) => +getComputedStyle(document.querySelector(selector)!).opacity;
+        const start = performance.now();
+        let worst = 0;
+        const tick = () => {
+          worst = Math.max(worst, Math.min(opacity('[data-testid=demo-note]'), opacity('[data-testid=release]')));
+          if (performance.now() - start < 1200) requestAnimationFrame(tick);
+          else resolve(worst);
+        };
+        tick();
+      }),
+  );
+}
+
+test('the bar shows the keys until a test runs, the note while it runs, and the keys again after', async ({ page }) => {
+  await offline(page);
+  await page.goto('/');
+  const note = page.getByTestId('demo-note');
+  const keys = [page.getByRole('link', { name: 'Self-host with Docker' }), page.getByTestId('release')];
+  const demo = page.frameLocator('iframe[title="Boomerang demo"]');
+  for (const key of keys) await expect(key).toBeVisible();
+  await expect(note).toBeHidden();
+
+  const comingIn = overlap(page);
+  await demo.getByTestId('start').click();
+  expect(await comingIn).toBe(0);
+  await expect(note).toBeVisible();
+  for (const key of keys) await expect(key).toBeHidden();
+
+  await expect(demo.getByTestId('result')).toBeVisible({ timeout: 20_000 });
+  const goingHome = overlap(page);
+  await demo.getByTestId('new-run').click();
+  // The bar leaves at the press, while the app is still on its way home.
+  await expect(note).toHaveAttribute('data-running', 'false');
+  await expect(demo.locator('#dock')).toHaveAttribute('data-screen', 'run');
+  expect(await goingHome).toBe(0);
+  await expect(note).toBeHidden();
+  for (const key of keys) await expect(key).toBeVisible();
+});
+
+for (const answer of [{}, { status: 404 }]) {
+  test(`the demo note sits in the middle of the bar, between Self-host and the release ${answer.status ? 'before there is a release' : 'with a version'}`, async ({ page }) => {
+    await offline(page, answer);
+    for (const viewport of Object.values(WIDTHS)) {
+      await page.setViewportSize(viewport);
+      const answered = page.waitForResponse(/releases\/latest/);
+      await page.goto('/');
+      await answered;
+      await expect(page.getByTestId('release')).toBeVisible();
+      const note = await page.getByTestId('demo-note').boundingBox();
+      expect(note!.x + note!.width / 2).toBeCloseTo(viewport.width / 2, 0);
+    }
+  });
+}
+
+for (const [width, viewport] of Object.entries(WIDTHS)) {
+  test(`on a ${width}, the bar's keys line up with the app's GitHub and History keys under them`, async ({ page }) => {
+    await offline(page);
+    await page.setViewportSize(viewport);
+    await page.goto('/');
+    await siteReady(page);
+    const demo = page.frameLocator('iframe[title="Boomerang demo"]');
+    const github = await demo.locator('#gh').boundingBox();
+    const history = await demo.locator('#menu').boundingBox();
+    const self = await page.getByRole('link', { name: 'Self-host with Docker' }).boundingBox();
+    const release = await page.getByTestId('release').boundingBox();
+    expect(self!.x).toBeCloseTo(github!.x, 0);
+    expect(release!.x + release!.width).toBeCloseTo(history!.x + history!.width, 0);
   });
 }

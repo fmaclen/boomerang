@@ -350,20 +350,21 @@ for (const [width, viewport] of Object.entries(WIDTHS)) {
     }
   });
 
-  test(`the empty state reads as a small label over a row's value (${width})`, async ({ page }) => {
+  test(`the empty state reads as a key's lettering, in a head's grey, over a row's value (${width})`, async ({ page }) => {
     await page.setViewportSize(viewport);
     await seedHistory(page, fixtureHistory());
     await page.goto('/');
     await openHistory(page);
     await expect(page.getByTestId('history-item')).toHaveCount(3);
-    const head = await computed(page.locator('#histHead > span').first(), [...TYPE, 'color']);
+    const { color: grey } = await computed(page.locator('#histHead > span').first(), ['color']);
     const value = await computed(page.locator('[data-testid=history-item] .run > span').first(), TYPE);
+    const key = await computed(page.getByTestId('history-clear').locator('span'), TYPE);
 
     await page.getByTestId('history-clear').click();
     await page.getByTestId('history-clear-confirm').click();
     const title = page.getByText('No tests yet');
     await expect(title).toBeVisible();
-    expect(await computed(title, [...TYPE, 'color'])).toEqual(resized(head, SIZES[width as keyof typeof SIZES].label));
+    expect(await computed(title, [...TYPE, 'color'])).toEqual({ ...key, color: grey });
     expect(await computed(page.getByText('Finished tests are kept on this server'), TYPE)).toEqual(value);
   });
 }
