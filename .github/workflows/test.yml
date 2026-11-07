@@ -12,9 +12,9 @@ concurrency:
 
 jobs:
   test:
-    name: Type check and Playwright
+    name: Type check, unit and Playwright
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
@@ -22,20 +22,22 @@ jobs:
         with:
           node-version: '26'
 
-      # Writes .env with the ports, installs dependencies and the browsers,
-      # the same as on a fresh worktree. The runner also needs their system libraries.
+      # Writes .env with the ports, installs dependencies and Chromium, the
+      # same as on a fresh worktree. The runner also needs its system libraries.
       - name: Set up the checkout
         run: |
           python3 scripts/worktree-setup.py
-          bunx playwright install-deps chromium webkit
+          bunx playwright install-deps chromium
 
       - name: Type check
         run: bun run check
 
-      # The suite writes screenshots and clips rather than comparing them, and
-      # --update-snapshots keeps any future toHaveScreenshot from failing here too.
+      - name: Unit and server tests
+        run: bun test
+
+      # Builds the box and the demo, then runs the browser tests with WebGL off.
       - name: Playwright
-        run: bun run test --update-snapshots
+        run: bun run test
 
       - uses: actions/upload-artifact@v7
         if: failure()

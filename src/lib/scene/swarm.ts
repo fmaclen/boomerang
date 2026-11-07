@@ -331,10 +331,15 @@ export class Swarm {
     this.prepareSettle();
   }
 
-  /** Builds the tables up to t. */
+  /**
+   * Builds the tables up to t. They stop at the end of the phase: past it the
+   * rate holds still, and the settled swarm moves on its own glides (see
+   * settle), so a result left up for hours costs nothing more.
+   */
   advance(t: number): void {
     const omega0 = this.omega(0);
-    while (this.xs.length * DT <= t + DT) {
+    const end = Math.min(t, this.t1);
+    while (this.xs.length * DT <= end + DT) {
       const k = this.xs.length;
       const tk = k * DT;
       let x = k ? this.xs[k - 1] : X_IDLE;

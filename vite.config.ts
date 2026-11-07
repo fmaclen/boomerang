@@ -1,8 +1,8 @@
 import { defineConfig, loadEnv } from 'vite';
-import adapter from '@sveltejs/adapter-static';
+import adapterBun from '@sveltejs/adapter-bun';
+import adapterStatic from '@sveltejs/adapter-static';
 import { sveltekit } from '@sveltejs/kit/vite';
 import tailwindcss from '@tailwindcss/vite';
-import { endpoints } from './server/endpoints.ts';
 
 // PORT and PREVIEW_PORT come from .env, written by scripts/worktree-setup.py.
 // Strict ports: a collision fails instead of drifting to another port.
@@ -12,36 +12,29 @@ function port(env: Record<string, string>, name: string): number {
   return value;
 }
 
-// Three builds share this config, by mode:
-// - the default is the app a box serves, into build/;
-// - `site` is the landing page at boomerang.fernando.is (site/routes), into site/build/;
-// - `demo` is the app again, under /demo/ of that site, with simulated
-//   readings in place of the measurement (see src/lib/engine/worker.ts).
-// Build site first: each build clears its own output folder, and the demo's
-// lives inside the site's. `bun run build:site` runs both in that order.
+// Two builds share this config, by mode:
+// - the default is the box: the page and the endpoints it measures against,
+//   one Bun server in build/ (`bun build/index.js`);
+// - `demo` is the public site, the same app reading a simulated link, as
+//   static files in build-site/ for Cloudflare Pages (`bun run build:site`).
 function kit(mode: string) {
-  if (mode === 'site')
-    return {
-      adapter: adapter({ pages: 'site/build' }),
-      outDir: '.svelte-kit-site',
-      files: { routes: 'site/routes', appTemplate: 'site/app.html', assets: 'site/static' },
-      // The demo the page frames is the next build's, so the crawler finds nothing at /demo/ yet.
-      prerender: {
-        handleHttpError: ({ path, message }: { path: string; message: string }) => {
-          if (!path.startsWith('/demo/')) throw new Error(message);
-        },
-      },
-    };
   if (mode === 'demo')
     return {
-      adapter: adapter({ pages: 'site/build/demo', fallback: 'index.html' }),
+      // The box's endpoints are left out: the demo never calls them.
+      adapter: adapterStatic({ pages: 'build-site', strict: false }),
       outDir: '.svelte-kit-demo',
-      paths: { base: '/demo' as const },
+      files: { appTemplate: 'src/demo.html' },
+      // Served from BASE_PATH (the site's root by default). Paths are absolute,
+      // since a static host answers every run's address with the same shell.
+      paths: { base: (process.env.BASE_PATH ?? '') as '' | `/${string}`, relative: false },
       output: { bundleStrategy: 'single' as const },
     };
-  // A single-page app: nothing is prerendered, and build/index.html is the
-  // shell nginx serves for every page address.
-  return { adapter: adapter({ fallback: 'index.html' }), output: { bundleStrategy: 'single' as const } };
+  return {
+    // An upload posts 8 MiB at a time; Bun turns away bodies over 512 KB by default.
+    adapter: adapterBun({ precompress: true, serverOptions: { maxRequestBodySize: 64 * 1024 * 1024 } }),
+    paths: { relative: false },
+    output: { bundleStrategy: 'single' as const },
+  };
 }
 
 export default defineConfig(({ command, mode }) => {
@@ -52,14 +45,8 @@ export default defineConfig(({ command, mode }) => {
   // A build needs no ports, so the Docker image builds without an .env.
   const serving = command === 'serve' || process.argv.includes('preview');
   return {
-    plugins: [
-      // First, so the test endpoints answer before SvelteKit's own middleware.
-      // The site has no box behind it, so it answers none of them.
-      mode === 'site' || mode === 'demo' ? [] : endpoints(),
-      tailwindcss(),
-      sveltekit(kit(mode)),
-    ],
-    server: { host: '127.0.0.1', port: serving ? port(env, 'PORT') : undefined, strictPort: true },
-    preview: { host: '127.0.0.1', port: serving ? port(env, 'PREVIEW_PORT') : undefined, strictPort: true },
+    plugins: [tailwindcss(), sveltekit(kit(mode))],
+    server: { host: '127.0.0.1', port: serving ? port(env, 'PORT') : undefined, strictPort: true, allowedHosts: ['.ts.net'] },
+    preview: { host: '127.0.0.1', port: serving ? port(env, 'PREVIEW_PORT') : undefined, strictPort: true, allowedHosts: ['.ts.net'] },
   };
 });

@@ -2,9 +2,10 @@
 
 T3 Code runs this after creating a worktree (see t3.json) with
 T3CODE_WORKTREE_PATH set. It gives the checkout its own port slot, written to
-.env (dev, preview, and the landing page's site), installs dependencies, and fetches the Chromium and WebKit the suite runs
-in. Rerunning is safe: an existing .env keeps its slot. Python rather than bash
-so it runs on Windows too.
+.env (dev, the box the suite runs, and the demo's static site), installs
+dependencies, and fetches the Chromium the suite runs in. Rerunning is safe:
+an existing .env keeps its slot. Python rather than bash so it runs on
+Windows too.
 """
 import os
 import re
@@ -71,8 +72,8 @@ def main():
     if (worktree / "package.json").exists():
         bun = shutil.which("bun") or "bun"
         subprocess.run([bun, "install", "--frozen-lockfile"], check=True)
-        subprocess.run([shutil.which("bunx") or "bunx", "playwright", "install", "chromium", "webkit"], check=True)
-    print(f"worktree ready: dev on {ports['PORT']}, preview on {ports['PREVIEW_PORT']}, site on {ports['SITE_PORT']}")
+        subprocess.run([shutil.which("bunx") or "bunx", "playwright", "install", "chromium"], check=True)
+    print(f"worktree ready: dev on {ports['PORT']}, box on {ports['PREVIEW_PORT']}, demo on {ports['SITE_PORT']}")
     return 0
 
 

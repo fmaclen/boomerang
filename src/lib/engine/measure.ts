@@ -1,17 +1,21 @@
-import type { Mode, Progress, Result, RunOptions, Sample, Transfer } from './types';
+import type { Mode, Progress, Result, Sample, Transfer } from './types';
 
-// The measurement itself: idle latency, then download, then upload, with
-// latency probed through both transfers. Storage is history.ts; index.ts
-// runs the two together. Everything that touches the wire is the Network
-// below: the box's endpoints by default, a simulated link in the landing
-// page's demo (see simulate.ts).
+// The measurement itself: idle latency, then download, then upload. Storage
+// is history.ts; index.ts runs the two together. Everything that touches the
+// wire is the Network below: the box's endpoints by default, a simulated
+// link in the public demo (see simulate.ts).
 
-/** Five transfer streams leave the sixth HTTP/1.1 connection free for the latency probes. */
+/** Five transfer streams, leaving the sixth HTTP/1.1 connection to the page. */
 const STREAMS = 5;
 const UPLOAD_BLOB_BYTES = 8 * 1024 * 1024;
 const IDLE_PROBES = 10;
+/**
+ * Latency takes ten probes or two seconds, whichever comes first; a probe
+ * still out at two seconds is cut off. Until one has answered, the first gets
+ * FIRST_PROBE_MS, and a box that has not answered by then fails the run.
+ */
 const IDLE_PROBE_BUDGET_MS = 2000;
-const LOADED_PROBE_EVERY_MS = 250;
+const FIRST_PROBE_MS = 4000;
 const TICK_MS = 100;
 const ADAPTIVE_FLOOR_S = 3;
 const ADAPTIVE_CAP_S = 5;
@@ -21,9 +25,8 @@ const FIXED_S = 30;
 /** The shortest each direction runs: an adaptive run's floor, a fixed run's length. */
 export const MIN_PHASE_SECONDS: Record<Mode, number> = { adaptive: ADAPTIVE_FLOOR_S, fixed: FIXED_S };
 
-type Notify = (progress: Progress) => void;
-export type OnBytes = (count: number) => void;
-export type Fail = (error: unknown) => void;
+type OnBytes = (count: number) => void;
+type Fail = (error: unknown) => void;
 /** Starts a direction's transfer: reports bytes as they move, calls fail if it breaks, and stops when signal aborts. */
 export type Streams = (onBytes: OnBytes, fail: Fail, signal: AbortSignal) => void;
 
@@ -34,52 +37,39 @@ export interface Network {
   upload: Streams;
 }
 
+/** Awaited before each transfer starts, so the page can give the phase before it a beat on screen. */
+export type Beat = (phase: 'download' | 'upload') => Promise<void>;
+
 export async function measure(
   mode: Mode,
-  notify: Notify,
+  notify: (progress: Progress) => void,
   signal: AbortSignal,
-  options: RunOptions = {},
+  before?: Beat,
   network: Network = box,
 ): Promise<Result> {
   const startedAt = Date.now();
-  const runStart = performance.now();
-  const progress: Progress = { phase: 'latency', mode, elapsed: 0, mbps: 0, bytes: 0, samples: [] };
-  const emit = (patch: Partial<Progress> = {}) => {
-    Object.assign(progress, patch);
-    progress.elapsed = (performance.now() - runStart) / 1000;
-    notify({ ...progress });
-  };
+  const progress: Progress = { phase: 'latency', mbps: 0, bytes: 0 };
+  const emit = (patch: Partial<Progress> = {}) => notify(Object.assign(progress, patch));
 
   emit();
   throwIfAborted(signal);
   const { idleMs, jitterMs } = await idleLatency(network, signal, (pings) => emit({ pings }));
   emit({ idleMs, jitterMs });
 
-  await hold(options.before?.('download'), signal);
+  await hold(before?.('download'), signal);
   emit({ phase: 'download' });
-  const down = await transferPhase('download', mode, network, network.download, signal, (mbps, bytes, samples, loadedMs) =>
-    emit({ mbps, bytes, samples, loadedMs }),
-  );
-  emit({ download: down.transfer, mbps: 0 });
+  const download = await transferPhase('download', mode, network.download, signal, (mbps, bytes) => emit({ mbps, bytes }));
+  emit({ download, mbps: 0 });
 
-  await hold(options.before?.('upload'), signal);
-  emit({ phase: 'upload', samples: [], loadedMs: undefined });
-  const up = await transferPhase('upload', mode, network, network.upload, signal, (mbps, bytes, samples, loadedMs) =>
-    emit({ mbps, bytes: down.transfer.bytes + bytes, samples, loadedMs }),
-  );
-  emit({ upload: up.transfer, mbps: 0 });
+  await hold(before?.('upload'), signal);
+  emit({ phase: 'upload' });
+  const upload = await transferPhase('upload', mode, network.upload, signal, (mbps, bytes) => emit({ mbps, bytes: download.bytes + bytes }));
+  emit({ upload, mbps: 0 });
 
-  return {
-    id: newId(),
-    startedAt,
-    mode,
-    download: down.transfer,
-    upload: up.transfer,
-    latency: { idleMs, jitterMs, downloadMs: down.loadedMs, uploadMs: up.loadedMs },
-  };
+  return { id: newId(), startedAt, mode, download, upload, latency: { idleMs, jitterMs } };
 }
 
-/** Ten sequential pings or two seconds, whichever first. Median is the latency, mean step between probes the jitter. */
+/** Median of the probes is the latency, the mean step between them the jitter. */
 async function idleLatency(
   network: Network,
   signal: AbortSignal,
@@ -87,10 +77,18 @@ async function idleLatency(
 ): Promise<{ idleMs: number; jitterMs: number }> {
   const times: number[] = [];
   const start = performance.now();
-  while (times.length < IDLE_PROBES && performance.now() - start < IDLE_PROBE_BUDGET_MS) {
-    times.push(await network.ping(signal));
+  while (times.length < IDLE_PROBES) {
+    const left = (times.length ? IDLE_PROBE_BUDGET_MS : FIRST_PROBE_MS) - (performance.now() - start);
+    if (left <= 0) break;
+    try {
+      times.push(await network.ping(AbortSignal.any([signal, AbortSignal.timeout(left)])));
+    } catch (error) {
+      if (signal.aborted || !(error instanceof DOMException && error.name === 'TimeoutError')) throw error;
+      break;
+    }
     onProbe([...times]);
   }
+  if (!times.length) throw new Error('the box did not answer ping');
   return { idleMs: median(times), jitterMs: meanAbsoluteStep(times) };
 }
 
@@ -104,21 +102,20 @@ async function ping(signal: AbortSignal): Promise<number> {
   return performance.now() - started;
 }
 
-type OnTick = (mbps: number, bytes: number, samples: Sample[], loadedMs: number) => void;
+type OnTick = (mbps: number, bytes: number) => void;
 
 /**
- * Runs one direction: starts the streams and the loaded-latency probes, then
- * ticks ten times a second to update the rolling rate, keep it as a sample,
- * close a one-second window every second, and decide when the phase is over.
+ * Runs one direction: starts the streams, then ticks ten times a second to
+ * update the rolling rate, keep it as a sample, close a one-second window
+ * every second, and decide when the phase is over.
  */
 function transferPhase(
   kind: 'download' | 'upload',
   mode: Mode,
-  network: Network,
   streams: Streams,
   signal: AbortSignal,
   onTick: OnTick,
-): Promise<{ transfer: Transfer; loadedMs: number }> {
+): Promise<Transfer> {
   return new Promise((resolve, reject) => {
     const phase = new AbortController();
     const abortPhase = () => phase.abort();
@@ -128,7 +125,6 @@ function transferPhase(
     const samples: Sample[] = [];
     // The rate over each whole second, which decides when an adaptive phase is over.
     const windows: Sample[] = [];
-    const probes: number[] = [];
     const recent: { t: number; bytes: number }[] = [];
     let bytes = 0;
     let lastWindowT = 0;
@@ -146,7 +142,7 @@ function transferPhase(
       const seconds = (performance.now() - start) / 1000;
       const from = afterFirstSecond ?? { t: 0, bytes: 0 };
       const mbps = seconds > from.t ? megabits(bytes - from.bytes) / (seconds - from.t) : 0;
-      resolve({ transfer: { mbps, bytes, seconds, samples }, loadedMs: median(probes) });
+      resolve({ mbps, bytes, seconds, samples });
     };
 
     if (signal.aborted) return finish();
@@ -157,7 +153,6 @@ function transferPhase(
       (error) => finish(error ?? new Error(`${kind} failed`)),
       phase.signal,
     );
-    void probeLoop(network, phase.signal, probes);
 
     timer = setInterval(() => {
       if (signal.aborted) return finish();
@@ -178,7 +173,7 @@ function transferPhase(
       // significant digits at the hundredth of a second it was read in.
       samples.push({ t: Math.floor(elapsed * 100) / 100, mbps: +rolling.toPrecision(4) });
 
-      onTick(rolling, bytes, samples, median(probes));
+      onTick(rolling, bytes);
       if (phaseOver(mode, elapsed, windows)) finish();
     }, TICK_MS);
   });
@@ -192,20 +187,6 @@ function phaseOver(mode: Mode, elapsed: number, windows: Sample[]): boolean {
   const a = windows[windows.length - 2].mbps;
   const b = windows[windows.length - 1].mbps;
   return Math.abs(a - b) <= ADAPTIVE_STABLE_RATIO * Math.max(a, b);
-}
-
-/** One probe in flight at a time, every 250 ms, until the phase ends. */
-async function probeLoop(network: Network, signal: AbortSignal, out: number[]): Promise<void> {
-  while (!signal.aborted) {
-    const started = performance.now();
-    try {
-      out.push(await network.ping(signal));
-    } catch {
-      if (signal.aborted) return;
-    }
-    const wait = LOADED_PROBE_EVERY_MS - (performance.now() - started);
-    if (wait > 0) await sleep(wait);
-  }
 }
 
 /**
@@ -286,7 +267,11 @@ function uploadStream(blob: Blob, onBytes: OnBytes, fail: Fail, signal: AbortSig
  */
 function randomBlob(size: number): Blob {
   const block = new Blob([crypto.getRandomValues(new Uint8Array(65536))]);
-  return new Blob(Array.from({ length: Math.ceil(size / 65536) }, () => block));
+  // Typed, so no server takes the post for a form submission and checks its origin.
+  return new Blob(
+    Array.from({ length: Math.ceil(size / 65536) }, () => block),
+    { type: 'application/octet-stream' },
+  );
 }
 
 /** randomUUID needs a secure context, which plain http over the tailnet is not. */
@@ -341,10 +326,6 @@ async function hold(beat: Promise<void> | undefined, signal: AbortSignal): Promi
     );
   });
   throwIfAborted(signal);
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function abortError(): Error {

@@ -4,18 +4,13 @@
 // reading the source, so a variant has to be written out in full, never glued
 // onto one of these with a template string.
 
-/** A key's label, pressed into the glass: a dark lip under each letter, a faint light one over it. */
+/** Every uppercase label, on a key or over a figure, a size down on the phone: pressed into the glass, a dark lip under each letter and a faint light one over it. */
 export const KEY_LABEL =
-  'font-stretch-125% font-bold text-[11px] tracking-[0.08em] uppercase leading-none text-shadow-[0_1px_1px_rgba(0,0,0,0.7),0_-1px_0_rgba(255,255,255,0.1)]';
-
-/** A small capital label over a figure. History's labels follow its own size (--lab); the rest are 12px. */
-export const LABEL =
-  'font-stretch-100% text-[length:var(--lab,12px)] font-semibold leading-[14px] tracking-[0.07em] uppercase';
+  'font-stretch-125% font-bold text-[10px] wide:text-[11px] tracking-[0.08em] uppercase leading-none text-shadow-[0_1px_1px_rgba(0,0,0,0.7),0_-1px_0_rgba(255,255,255,0.1)]';
 
 /**
  * Every unit beside a figure, on every screen, in one style and its own
- * case: ms, Mbps, Gbps, MB, GB (MBps would be another unit). The director
- * writes it into the figures it fills, too.
+ * case: ms, Mbps, Gbps, MB, GB (MBps would be another unit).
  */
 export const UNIT =
   'ml-1 font-stretch-100% text-[length:var(--lab,12px)] font-semibold leading-[14px] tracking-[0.02em] text-ink-3';

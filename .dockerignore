@@ -2,7 +2,13 @@ node_modules
 .worktrees
 .git
 build
+build-site
 .svelte-kit
+.svelte-kit-demo
 test-results
+tests
 screenshots
+clips
+docs
 .env
+*.sqlite

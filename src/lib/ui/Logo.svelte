@@ -6,14 +6,13 @@
   only, so nothing round it moves.
 -->
 <script lang="ts">
-  import { THROW, WORD_BOX, over, under } from './logo';
-  import { ARC, WORD } from './outlines';
+  import { ARC, THROW, WORD, WORD_BOX, over, under } from './logo';
 
   let { throwing, onlanded }: { throwing: boolean; onlanded: () => void } = $props();
 
   const ARCS = [
-    { at: over(), fill: 'fill-orange', delay: 90, last: true },
-    { at: under(), fill: 'fill-lime', delay: 0, last: false },
+    { at: over, fill: 'fill-orange', delay: 90, last: true },
+    { at: under, fill: 'fill-lime', delay: 0, last: false },
   ];
   const PART = 'origin-center transform-fill';
 </script>

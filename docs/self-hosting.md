@@ -31,7 +31,7 @@ the address under test, then run:
 BOX=http://127.0.0.1:24610
 for p in / /history /ping; do curl -s -o /dev/null -w "%{http_code} $p\n" "$BOX$p"; done
 curl -s -o /dev/null -H 'Accept-Encoding: gzip, br, zstd' -w "%{http_code} /downloading %{size_download}\n" "$BOX/downloading"
-head -c 33554432 /dev/zero | curl -s -o /dev/null -w "%{http_code} /upload %{size_upload}\n" --data-binary @- "$BOX/upload"
+head -c 33554432 /dev/zero | curl -s -o /dev/null -H 'Content-Type: application/octet-stream' -w "%{http_code} /upload %{size_upload}\n" --data-binary @- "$BOX/upload"
 ```
 
 It passes when it prints exactly:
@@ -46,10 +46,9 @@ It passes when it prints exactly:
 
 `/downloading` must arrive as exactly 104857600 bytes: any other size means
 something in front of the box compressed it. `/upload` must take all 32 MB
-and answer `200`. `413` means something in front of the box caps request
-bodies below the 64 MB the page needs; fewer bytes than 33554432 means a
-proxy passed the box's early answer on and cut the upload short (see
-[Reverse proxies](#reverse-proxies)).
+and answer `200`, which the box sends only once the last byte is in. `413`
+means something in front of the box caps request bodies below the 64 MB the
+box accepts (see [Reverse proxies](#reverse-proxies)).
 
 ## 1. Check the host
 
@@ -230,14 +229,12 @@ passes, and History still lists the runs from before the update.
 
 ## Reverse proxies
 
-The box answers `POST /upload` before it has read the body, then drains the
-body. A proxy that streams the upload through passes that early answer back
-and drops the rest of the body, so the browser sees its upload reset and
-loses the sample. Caddy and Traefik do this by default. The fix is to have
-the proxy read the whole body first, up to the 64 MB the box accepts. In
-the other direction, the proxy must not compress or buffer `/downloading`.
-The configs below do both, and nothing else. Each passed the box check and a
-browser run through it, on Caddy 2.11, nginx 1.30 and Traefik 3.7.
+The box reads each upload to its last byte before it answers, so a proxy can
+pass uploads straight through. A proxy in front of it must still leave three
+things alone: request bodies up to the 64 MB the box accepts (the page posts
+8 MB at a time), `/downloading` uncompressed, and slow requests running. The
+configs below do that and nothing else; each passed the box check and a
+browser run through it.
 
 Mount the box at `/` of its own hostname or port, as step 4 explains.
 Replace `speed.example.com` with your hostname, and `127.0.0.1:24610` with
@@ -249,13 +246,9 @@ middleware); the box check catches it if one is applied.
 
 ```
 speed.example.com {
-	reverse_proxy 127.0.0.1:24610 {
-		request_buffers 64MiB
-	}
+	reverse_proxy 127.0.0.1:24610
 }
 ```
-
-Write `64MiB`: Caddy reads `64MB` as decimal, short of the box's limit.
 
 ### nginx
 
@@ -274,21 +267,19 @@ server {
 
 `client_max_body_size` lifts nginx's 1 MB default, which refuses the
 page's uploads with `413`. `proxy_buffering off` stops nginx copying every
-download stream to a temporary file. Leave `proxy_request_buffering` on, as
-it is by default: turned off, nginx streams the body through and cuts slow
-uploads short like the others.
+download stream to a temporary file.
 
 ### Traefik
 
-Raise the read timeout on the entrypoint that serves the box (`web` here).
 Traefik v3 closes any request still sending after 60 s, which cuts off a
-slow upload. In Traefik's static configuration:
+slow upload. Raise the read timeout on the entrypoint that serves the box
+(`web` here) in Traefik's static configuration:
 
 ```
 --entrypoints.web.transport.respondingTimeouts.readTimeout=120s
 ```
 
-Then in the dynamic configuration, a router with a buffering middleware:
+and route to the box as usual in the dynamic configuration:
 
 ```yaml
 http:
@@ -297,20 +288,12 @@ http:
       rule: Host(`speed.example.com`)
       entryPoints: [web]
       service: boomerang
-      middlewares: [boomerang-buffer]
-  middlewares:
-    boomerang-buffer:
-      buffering:
-        maxRequestBodyBytes: 67108864
   services:
     boomerang:
       loadBalancer:
         servers:
           - url: http://127.0.0.1:24610
 ```
-
-The middleware needs at least one field (`buffering: {}` is rejected and
-the route answers 404), and `67108864` is the box's 64 MB limit.
 
 ## Tunnels measure the tunnel
 

@@ -6,8 +6,7 @@ import type { Device } from './types';
  * client hints (navigator.userAgentData) where the browser offers them.
  * Names only, no versions. An iPad asks for desktop pages with a Mac's
  * string, so only its touch screen gives it away; an Android browser without
- * "Mobile" in its string is a tablet. Saved with each run in this browser
- * only: the public record never carries it (see record.ts).
+ * "Mobile" in its string is a tablet. Saved with each run.
  */
 export function deviceOf(): Device {
   const nav = navigator as Navigator & { userAgentData?: { brands?: { brand: string }[]; platform?: string; mobile?: boolean } };

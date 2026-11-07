@@ -1,12 +1,10 @@
 // The scene: a swarm of boomerangs behind the interface, in WebGL2. The page
 // drives it with one frame description per animation frame (SceneFrame) and
-// tells it about the run as it goes:
+// hands it each run's swarms and ping throws (see run/data.ts):
 //
 //   const scene = Scene.create(canvas, seed);
 //   scene.layout(w, h, dpr, S, cams);   // on every resize
-//   scene.newRun();                     // Start pressed
-//   scene.throws.push(t);               // a ping throw leaves at run time t
-//   scene.D.start(t); scene.D.feed(t, mbps); scene.D.end(t);   // download, likewise U
+//   scene.useSwarms(D, U, ulEnd);       // a run on screen
 //   scene.frame(view);                  // every frame
 //
 // Idle is six pieces circling Start plus boomerangs drifting over the whole
@@ -15,7 +13,7 @@
 // shake and rewards follow the measured rate, and settles into a loose band
 // when its phase ends.
 
-import { Renderer, type Composite } from './gl';
+import { Renderer } from './gl';
 import {
   EASE_IN_OUT,
   EASE_IN_OUT_SINE,
@@ -93,12 +91,6 @@ export interface SceneFrame {
   zoom: number;
   cx: number;
   cy: number;
-  boxes: Float32Array;
-  boxK: Float32Array;
-  eyeX: number;
-  eyeY: number;
-  eyeR: number;
-  eyeK: number;
   hand: Hand;
 }
 
@@ -181,14 +173,8 @@ export class Scene {
       const n = rng() < 0.5 ? 1 : 2 + Math.floor(rng() * 4);
       for (let m = 0; m < n && this.flock.length < DRIFT_MAX; m++) this.flock.push({ g, n, m });
     }
-    this.newRun();
-  }
-
-  /** Fresh swarms for a run. The six idle pieces are dealt from the load's seed, so idle never changes between runs. */
-  newRun(): void {
-    ({ D: this.D, U: this.U } = makeSwarms(this.seed));
-    this.throws = [];
-    this.ulEnd = Infinity;
+    // The six idle pieces are dealt from the load's seed, so idle never changes between runs.
+    ({ D: this.D, U: this.U } = makeSwarms(seed));
   }
 
   /** Swarms already run, for a saved run reopened at rest. */
@@ -197,10 +183,6 @@ export class Scene {
     this.U = U;
     this.throws = [];
     this.ulEnd = ulEnd;
-  }
-
-  makeSwarms(): { D: Swarm; U: Swarm } {
-    return makeSwarms(this.seed);
   }
 
   layout(W: number, H: number, dpr: number, S: number, cam: { run: Cam; idle: Cam }): void {
@@ -689,22 +671,12 @@ export class Scene {
     if (v.drift) this.buildDrift(v.drift.clock, v.drift.gf, v.drift.clear, v);
     const off: [number, number] = [sh[0] * v.zoom + (v.cx - W / 2), sh[1] * v.zoom + (H / 2 - v.cy)];
     const dpr = r.dpr;
-    // Depth of field only while idle pieces are on screen; the most blur
-    // scales with the scene, a few pixels either way.
-    const dofR = r.idleDrawn ? clamp(0.03 * S * v.zoom, 4, 9) * dpr : 0;
     // The shockwaves, about the eye as the shake carries it; Start's, which
     // is over long before the first reward, about where Start was pressed.
     const waveC: [number, number] =
       v.run && v.t < BLAST_AT + BLAST_DUR
         ? [ci.cx * dpr, (H - ci.cy) * dpr]
         : [(v.cx + sh[0] * v.zoom) * dpr, (H - v.cy + sh[1] * v.zoom) * dpr];
-    const c: Composite = {
-      boxes: v.boxes,
-      boxK: v.boxK,
-      eye: [v.eyeX * dpr, (H - v.eyeY) * dpr, v.eyeR * dpr, v.eyeK],
-      dofR,
-      waveC,
-    };
-    r.draw(W, H, off, v.zoom, env.CAM, [HU.x, HU.y], c);
+    r.draw(W, H, off, v.zoom, env.CAM, [HU.x, HU.y], waveC);
   }
 }

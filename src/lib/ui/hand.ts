@@ -115,7 +115,7 @@ export type KeyBox = [number, number, number, number];
 const RIM_EASE = 0.2; // seconds each rim takes to follow its light
 const RIM_FALL = 160; // px beyond a key's edge at which the cursor's light is half as strong
 /** While the cursor rests on Start its rim light drifts once round it every HOVER_TURN seconds. */
-export const HOVER_TURN = 7;
+const HOVER_TURN = 7;
 const tri = (x: number) => {
   x = x - 2 * Math.floor(x / 2);
   return x < 1 ? x : 2 - x;
@@ -131,14 +131,15 @@ const tri = (x: number) => {
  * swings one light, from the upper left, round every key the same way.
  */
 export class Rims {
-  private els: HTMLElement[];
+  private ids: string[];
   private state: { x: number; y: number; e: number; vx: number; vy: number; ve: number; on: boolean }[];
-  private memo: { hand: string; hi: string; even: string }[];
+  private memo: { el: HTMLElement | null; hand: string; hi: string; even: string }[];
 
-  constructor(els: HTMLElement[]) {
-    this.els = els;
-    this.state = els.map(() => ({ x: 0, y: 0, e: 0, vx: 0, vy: 0, ve: 0, on: false }));
-    this.memo = els.map(() => ({ hand: '', hi: '', even: '' }));
+  /** The keys, by id; one that comes and goes with its page (Start) takes its light up again when it is back. */
+  constructor(ids: string[]) {
+    this.ids = ids;
+    this.state = ids.map(() => ({ x: 0, y: 0, e: 0, vx: 0, vy: 0, ve: 0, on: false }));
+    this.memo = ids.map(() => ({ el: null, hand: '', hi: '', even: '' }));
   }
 
   /** The angle Start's rim light sits at now, where a hover's drift picks up from. */
@@ -149,7 +150,7 @@ export class Rims {
   /** at holds each key's box, in the order given; hover drifts the first key's light round it from angle rim0, since `since`. */
   update(now: number, hand: Hand, at: KeyBox[], hover: { k: number; since: number; rim0: number }): void {
     const drift = ((-75 + 90 * EASE_IN_OUT(tri(now / 7))) * Math.PI) / 180;
-    this.els.forEach((n, i) => {
+    this.ids.forEach((id, i) => {
       // Vectors point from the key's centre toward the lit edge, y down; a
       // vector's length is how strongly that edge is lit.
       let tx = Math.sin(drift);
@@ -211,6 +212,9 @@ export class Rims {
       const hi = Math.min(Math.hypot(s.x, s.y), 1.15).toFixed(3);
       const ev = Math.max(0, s.e).toFixed(3);
       const m = this.memo[i];
+      const n = document.getElementById(id);
+      if (!n) return;
+      if (m.el !== n) Object.assign(m, { el: n, hand: '', hi: '', even: '' });
       if (m.hand !== ang) n.style.setProperty('--hand', (m.hand = ang));
       if (m.hi !== hi) n.style.setProperty('--hi', (m.hi = hi));
       if (m.even !== ev) n.style.setProperty('--even', (m.even = ev));
@@ -224,6 +228,7 @@ export class Rims {
 // light drifts round it and the nearest boomerangs lean in. It settles over
 // HOVER_OUT when the cursor leaves. A press keeps all of it, so nothing
 // moves under the cursor, and the run holds it while the disc collapses.
+// Script keeps it, since the scene leans with it.
 const HOVER_IN = 0.26;
 const HOVER_OUT = 0.34;
 export const HOVER_LIFT = 0.04;
@@ -238,13 +243,13 @@ export class Hover {
   private at = -1;
   private fine = window.matchMedia('(hover: hover) and (pointer: fine)');
 
-  /** screen is the app's; startAngle where Start's rim light is now. Returns how far the hover has come and its breathing glow. */
-  update(now: number, screen: string, hand: Hand, start: HTMLButtonElement, startAngle: () => number, reduced: boolean): { hover: number; glow: number } {
+  /** screen is the app's; startAngle where Start's rim light is now. */
+  update(now: number, screen: string, hand: Hand, start: HTMLElement | null, startAngle: () => number): void {
     if (screen === 'exit') {
       this.from = this.to = this.k = 0;
       this.at = -1;
     } else if (screen === 'idle') {
-      const want = this.fine.matches && hand.mouse && !start.disabled && start.matches(':hover') ? 1 : 0;
+      const want = start && this.fine.matches && hand.mouse && !(start as HTMLButtonElement).disabled && start.matches(':hover') ? 1 : 0;
       if (want !== this.to) {
         this.from = this.k;
         this.to = want;
@@ -256,7 +261,10 @@ export class Hover {
       }
       if (this.at >= 0) this.k = lerp(this.from, this.to, EASE_IN_OUT_SINE(span(now - this.at, 0, this.to ? HOVER_IN : HOVER_OUT)));
     }
-    const breath = reduced ? 1 : 0.78 + 0.22 * (0.5 - 0.5 * Math.cos((TAU * (now - this.since)) / BREATH_T));
-    return { hover: this.k, glow: this.k * breath };
+  }
+
+  /** The halo's breathing glow. */
+  glow(now: number, reduced: boolean): number {
+    return this.k * (reduced ? 1 : 0.78 + 0.22 * (0.5 - 0.5 * Math.cos((TAU * (now - this.since)) / BREATH_T)));
   }
 }

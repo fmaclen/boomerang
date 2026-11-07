@@ -22,8 +22,12 @@ issue it fixes if there is one, and say how you tested it.
 
 Run `python3 scripts/worktree-setup.py` once after cloning. It installs
 dependencies with Bun and writes the ports the page and tests use to `.env`.
-Commands are in `package.json`, and `bun run test` runs the test suite.
-Commit the screenshots and clips it updates.
+Commands are in `package.json`: `bun run dev` serves the page and its
+endpoints, `bun test` runs the unit and server tests, and `bun run test`
+builds the box and the demo and runs the browser tests against them. Tests
+check behaviour and write nothing into the repository. When a change alters
+what the README shows, run `bun run shots` and commit the screenshots and
+clips it writes.
 
 Commits and pull request titles follow
 [Conventional Commits](https://www.conventionalcommits.org/) (`fix:`, `feat:`,

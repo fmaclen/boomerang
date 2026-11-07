@@ -1,6 +1,5 @@
 export type Mode = 'adaptive' | 'fixed';
 export type HistoryMode = 'box' | 'browser';
-export type Phase = 'latency' | 'download' | 'upload' | 'done' | 'error';
 
 /**
  * One point of the rate over time: `t` seconds into the phase and the rolling
@@ -27,12 +26,8 @@ export interface Transfer {
 export interface Latency {
   /** Idle latency before any transfer, in milliseconds (median of the probes). */
   idleMs: number;
-  /** Mean absolute difference between consecutive idle probes. */
+  /** Mean absolute difference between consecutive probes. */
   jitterMs: number;
-  /** Median latency while the download ran. */
-  downloadMs: number;
-  /** Median latency while the upload ran. */
-  uploadMs: number;
 }
 
 /** What a run was made on, read from the browser (see device.ts). Empty strings where it could not tell. */
@@ -52,50 +47,27 @@ export interface Result {
   download: Transfer;
   upload: Transfer;
   latency: Latency;
-  /** Set when the run is saved; runs saved before it was recorded have none. Kept in the browser only. */
   device?: Device;
 }
 
-/** What a running test reports to subscribers. */
+/** A run as History lists it: everything but the samples, which only a reopened run needs. */
+export type Summary = Omit<Result, 'download' | 'upload'> & {
+  download: Omit<Transfer, 'samples'>;
+  upload: Omit<Transfer, 'samples'>;
+};
+
+/** What a running test reports as it goes. */
 export interface Progress {
-  phase: Phase;
-  mode: Mode;
-  /** Seconds since the run started. */
-  elapsed: number;
+  phase: 'latency' | 'download' | 'upload';
   /** Rate right now, during download and upload; 0 otherwise. */
   mbps: number;
   /** Bytes moved so far in the run, both directions. */
   bytes: number;
-  /** Samples of the phase in progress. */
-  samples: Sample[];
   /** Idle round trips so far, in ms, while latency is measured. */
   pings?: number[];
-  /** Median latency so far while the link is loaded, during download and upload. */
-  loadedMs?: number;
   /** Filled in as each phase finishes. */
   idleMs?: number;
   jitterMs?: number;
   download?: Transfer;
   upload?: Transfer;
-  /** Set when `phase` is 'done'. */
-  result?: Result;
-  /** Set when `phase` is 'error'. */
-  error?: string;
-}
-
-export interface RunOptions {
-  /**
-   * Awaited before each transfer starts, so a page can give the phase before
-   * it a beat on screen. The transfer's own clock starts once it resolves;
-   * an abort still ends the run while it waits.
-   */
-  before?: (phase: 'download' | 'upload') => Promise<void>;
-}
-
-export interface Run {
-  /** Calls `fn` now and on every change. Svelte-store compatible, so `$run` works. */
-  subscribe(fn: (progress: Progress) => void): () => void;
-  /** Resolves with the saved result; rejects on error or abort. */
-  done: Promise<Result>;
-  abort(): void;
 }

@@ -13,7 +13,7 @@ layout(location = 6) in vec3 m_nor;
 uniform vec2 u_res; uniform vec2 u_off; uniform float u_zoom; uniform float u_cam;
 // The hand: the eased cursor or tilt, -1 to 1 each way with y up.
 uniform vec2 u_hand;
-out vec3 v_n; out vec3 v_col; out float v_a; out float v_heat; out float v_depth; out float v_coc;
+out vec3 v_n; out vec3 v_col; out float v_a; out float v_heat; out float v_depth;
 // Turns v about the y axis by a.x (its face toward +x), then the x axis by a.y (toward +y).
 vec3 turn(vec3 v, vec2 a) {
   float c = cos(a.x), s = sin(a.x);
@@ -29,13 +29,11 @@ void main() {
   vec3 out_ = ca * e1 + sa * e2;
   vec3 T = -sa * e1 + ca * e2;
   vec3 P = a0.y * out_ + a3.xyz;
-  // Idle pieces (the ones that answer the hand) share one rule for light and
-  // focus: darker the farther they are, brighter as they come closer, and
-  // sharp only near the plane of Start, blurring as they leave it either way.
+  // Idle pieces (the ones that answer the hand) share one rule for light:
+  // darker the farther they are, brighter as they come closer.
   float idle = step(0.5, a3.w), zn = P.z / u_cam;
   v_depth = idle > 0.5 ? mix(0.1, 0.95, pow(smoothstep(-0.5, 0.42, zn), 2.0))
     : (a0.y > 0.5 ? clamp(0.9 + 0.3 * out_.z, 0.55, 1.15) : 1.0);
-  v_coc = idle * clamp(abs(zn) / (1.0 - zn) / 0.75, 0.0, 1.0);
   // Nearer pieces shift with the hand and farther ones against it, a soft
   // parallax about the eye, and every piece turns its face a little toward it.
   vec2 h = u_hand * a3.w;
@@ -65,11 +63,8 @@ void main() {
  */
 export const FS_PIECE = `#version 300 es
 precision highp float;
-in vec3 v_n; in vec3 v_col; in float v_a; in float v_heat; in float v_depth; in float v_coc;
-layout(location = 0) out vec4 o;
-// How out of focus the piece is (0 sharp, 1 the most blur), weighted by its
-// coverage so the resolve can recover it.
-layout(location = 1) out vec4 o_coc;
+in vec3 v_n; in vec3 v_col; in float v_a; in float v_heat; in float v_depth;
+out vec4 o;
 const vec3 L = vec3(-0.448, 0.647, 0.617);
 const vec3 Hh = vec3(-0.25, 0.361, 0.898);
 void main() {
@@ -81,7 +76,6 @@ void main() {
   vec3 c = base * (0.55 + 0.6 * dif) * v_depth + vec3(0.38 * spe * max(v_col.r, max(v_col.g, v_col.b)));
   float a = clamp(v_a, 0.0, 1.0);
   o = vec4(c * a, a);
-  o_coc = vec4(v_coc * a, 0.0, 0.0, a);
 }`;
 
 /** A streak from tail to head, for sparks and the ping's fading path. */
@@ -128,62 +122,28 @@ void main() {
 }`;
 
 /**
- * The scene laid over the ground. Its light is held down behind the interface
- * (boxes, in device pixels with y up), and a soft pool of shade sits behind
- * the number (u_eye: centre, radius, strength) so the digits always win.
- *
- * Two effects bend or soften the scene on its way to the screen:
- * - Depth of field, in idle (u_dofR, the most blur in device pixels; 0 is
- *   off). Each pixel takes the largest blur of the pieces around it, then
- *   averages the scene over a disc that size, so a piece out of focus
- *   softens on both sides of its edge.
- * - A reward's shockwave (u_wave: front radius, width, strength in device
- *   pixels, and fade). Space bends outward as the front passes, like light
- *   round a heavy mass: whatever the front crosses is carried out and
- *   stretched along it, the bend trails off behind the front, the colours
- *   part slightly where it is steepest, and the slope catches the light on
- *   one side and shades the other, so the wave reads even over bare ground.
+ * The scene laid over the ground, bent by the rewards' shockwaves (u_wave:
+ * front radius, width, strength in device pixels, and fade). Space bends
+ * outward as the front passes, like light round a heavy mass: whatever the
+ * front crosses is carried out and stretched along it, the bend trails off
+ * behind the front, the colours part slightly where it is steepest, and the
+ * slope catches the light on one side and shades the other, so the wave
+ * reads even over bare ground. The interface's shade over the scene is the
+ * page's own (see app.css).
  */
 export const FS_COMP = `#version 300 es
 precision highp float;
 in vec2 v_uv;
 uniform sampler2D u_scene;
-uniform sampler2D u_coc;
-uniform vec4 u_box[6]; uniform float u_boxK[6]; uniform vec4 u_eye; uniform float u_feather;
-uniform vec2 u_px; uniform float u_dofR;
+uniform vec2 u_px;
 uniform vec4 u_wave[16]; uniform vec3 u_waveCol[16]; uniform int u_waves; uniform vec2 u_waveC;
 out vec4 o;
-float inside(vec4 b, vec2 p) {
-  vec2 d = max(b.xy - p, p - b.zw);
-  float dist = length(max(d, 0.0)) + min(max(d.x, d.y), 0.0);
-  return 1.0 - smoothstep(-u_feather, u_feather, dist);
-}
-vec2 disc(int i, float n, float a0) {
-  float a = float(i) * 2.39996323 + a0;
-  return sqrt((float(i) + 0.5) / n) * vec2(cos(a), sin(a));
-}
-vec4 sceneAt(vec2 uv, float a0) {
-  if (u_dofR < 0.5) return texture(u_scene, uv);
-  float R = 0.0;
-  for (int i = 0; i < 24; i++) {
-    vec4 c = texture(u_coc, uv + disc(i, 24.0, 0.0) * u_dofR * u_px);
-    if (c.a > 0.004) R = max(R, c.r / c.a);
-  }
-  vec4 c0 = texture(u_coc, uv);
-  if (c0.a > 0.004) R = max(R, c0.r / c0.a);
-  R *= u_dofR;
-  if (R < 0.75) return texture(u_scene, uv);
-  vec4 acc = vec4(0.0);
-  for (int i = 0; i < 32; i++) acc += texture(u_scene, uv + disc(i, 32.0, a0) * R * u_px);
-  return acc / 32.0;
-}
 // The bend's profile across the front, x in widths (0 at the front,
 // negative behind it): a steep rise ahead and a tail behind, short enough
 // that waves close behind one another stay apart.
 float bend(float x) { return x > 0.0 ? exp(-2.2 * x * x) : exp(-0.8 * x * x); }
 void main() {
   vec2 p = gl_FragCoord.xy;
-  float a0 = 6.2831853 * fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715))));
   vec2 shift = vec2(0.0);
   float spread = 0.0, light = 0.0;
   vec3 tint = vec3(0.0);
@@ -213,22 +173,18 @@ void main() {
     shift = dir * bent;
   }
   vec2 uv = (p - shift) * u_px;
-  vec4 s = sceneAt(uv, a0);
+  vec4 s = texture(u_scene, uv);
   if (spread > 0.05) {
     vec2 dir = normalize(p - u_waveC + 1e-3);
-    s.r = sceneAt(uv - dir * spread * u_px, a0).r;
-    s.b = sceneAt(uv + dir * spread * u_px, a0).b;
+    s.r = texture(u_scene, uv - dir * spread * u_px).r;
+    s.b = texture(u_scene, uv + dir * spread * u_px).b;
   }
-  float keep = 1.0;
-  for (int i = 0; i < 6; i++) keep *= 1.0 - u_boxK[i] * inside(u_box[i], p);
-  float pool = u_eye.w * (1.0 - smoothstep(u_eye.z * 0.7, u_eye.z * 1.35, length(p - shift - u_eye.xy)));
-  keep *= 1.0 - 0.8 * pool;
-  vec3 ground = vec3(0.0314, 0.0510, 0.0471) * (1.0 - 0.8 * pool);
+  vec3 ground = vec3(0.0314, 0.0510, 0.0471);
   // The ripple's light: a lift on its lit slope and shade on the other,
-  // tinted with the reward's colour, held down behind the interface.
+  // tinted with the reward's colour.
   ground *= 1.0 + 0.9 * clamp(light, -0.6, 0.6);
-  ground += tint * 0.065 * keep;
-  vec3 col = ground * (1.0 - s.a * keep) + s.rgb * keep;
+  ground += tint * 0.065;
+  vec3 col = ground * (1.0 - s.a) + s.rgb;
   float n = fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
   o = vec4(col + (n - 0.5) / 255.0, 1.0);
 }`;

@@ -1,4 +1,0 @@
-/* The app's theme, font and keys, plus the landing page's own markup for
-   Tailwind to read: the app's stylesheet only scans src/. */
-@import '../src/app.css';
-@source './routes';

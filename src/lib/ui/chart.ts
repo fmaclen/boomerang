@@ -7,9 +7,9 @@
 
 import type { Direction } from '../run/data';
 import { TAU } from '../scene/math';
-import { css } from './dom';
 
 const INK = [241, 247, 235];
+const css = (c: number[], a = 1) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
 
 export class Chart {
   private ctx: CanvasRenderingContext2D;

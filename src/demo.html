@@ -1,0 +1,37 @@
+<!doctype html>
+<!-- The public demo at boomerang.fernando.is: the app under its own bar (see DemoBar.svelte). -->
+<html lang="en" class="bg-ground [--bar:56px]">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#080d0c" />
+    <title>Boomerang: a speed test for your own network</title>
+    <meta name="description" content="A self-hosted speed test. Run it on a box at home and it measures the link to the phone or laptop you open it on: your Wi-Fi, your LAN or your tailnet." />
+    <link rel="canonical" href="https://boomerang.fernando.is/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Boomerang" />
+    <meta property="og:url" content="https://boomerang.fernando.is/" />
+    <meta property="og:title" content="Boomerang: a speed test for your own network" />
+    <meta property="og:description" content="A self-hosted speed test. Run it on a box at home and it measures the link to the phone or laptop you open it on: your Wi-Fi, your LAN or your tailnet." />
+    <meta property="og:image" content="https://boomerang.fernando.is/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Boomerang's start screen: a lime Start button over a swarm of boomerangs" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <script defer data-domain="boomerang.fernando.is" src="https://plausible.fernando.is/js/script.js"></script>
+    <link rel="preload" href="%sveltekit.assets%/archivo.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="icon" href="%sveltekit.assets%/icon-16.svg" type="image/svg+xml" />
+    <link rel="icon" href="%sveltekit.assets%/icon.svg" type="image/svg+xml" sizes="32x32" />
+    <link rel="apple-touch-icon" href="%sveltekit.assets%/apple-touch-icon.png" />
+    <!-- Latin only, weights 400 to 800 and every width, preloaded above. -->
+    <style>
+      @font-face { font-family: 'Archivo'; src: url('%sveltekit.assets%/archivo.woff2') format('woff2'); font-weight: 400 800; font-stretch: 62% 125%; font-display: block; }
+    </style>
+    %sveltekit.head%
+  </head>
+  <body
+    class="m-0 font-sans font-stretch-100% font-[450] text-ink tabular-nums antialiased [-webkit-tap-highlight-color:transparent]"
+  >
+    <div style="display: contents">%sveltekit.body%</div>
+  </body>
+</html>

@@ -1,15 +1,23 @@
 <!doctype html>
-<html lang="en" class="h-full overflow-hidden bg-ground">
+<html lang="en" class="bg-ground">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="boomerang-history" content="box" />
+    <meta name="theme-color" content="#080d0c" />
     <title>Boomerang</title>
+    <link rel="preload" href="%sveltekit.assets%/archivo.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="icon" href="%sveltekit.assets%/icon-16.svg" type="image/svg+xml" />
+    <link rel="icon" href="%sveltekit.assets%/icon.svg" type="image/svg+xml" sizes="32x32" />
+    <link rel="apple-touch-icon" href="%sveltekit.assets%/apple-touch-icon.png" />
+    <!-- Latin only, weights 400 to 800 and every width, preloaded above. -->
+    <style>
+      @font-face { font-family: 'Archivo'; src: url('%sveltekit.assets%/archivo.woff2') format('woff2'); font-weight: 400 800; font-stretch: 62% 125%; font-display: block; }
+    </style>
     %sveltekit.head%
   </head>
   <body
-    class="m-0 h-full touch-manipulation overflow-hidden bg-ground font-sans font-stretch-100% font-[450] text-ink tabular-nums antialiased [-webkit-tap-highlight-color:transparent]"
+    class="m-0 font-sans font-stretch-100% font-[450] text-ink tabular-nums antialiased [-webkit-tap-highlight-color:transparent]"
   >
-    <div id="app">%sveltekit.body%</div>
+    <div style="display: contents">%sveltekit.body%</div>
   </body>
 </html>
