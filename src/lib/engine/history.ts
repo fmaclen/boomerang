@@ -22,35 +22,49 @@ const held = new Map<string, Result>();
 /** Runs this page finished that the box has not confirmed yet, listed until it does. */
 let unsaved: Result[] = [];
 
+/** Bumped by every clear, so a list that set out before one cannot bring its runs back. */
+let generation = 0;
+
 /** Where runs are kept: known once History has been listed, and the box until then. */
 export const historyMode = (): HistoryMode => mode ?? 'box';
 
 export interface Page {
   runs: Summary[];
   more: boolean;
+  /** Where the next page starts in the store: counted in stored runs, not rows shown. */
+  next: number;
+  /** The box could not be reached: only this page's own runs are listed. */
+  failed?: boolean;
 }
 
-/** A page of runs, newest first, from the from-th; null when the box could not be reached. */
+/**
+ * A page of runs, newest first, from the store's from-th; null when a clear
+ * has happened since it was asked for. A run this page finished shows at
+ * once on the first page, whether or not the box has taken it yet.
+ */
 export async function listRuns(from: number): Promise<Page | null> {
+  const asked = generation;
   if (mode === 'browser') {
     const all = readLocal();
-    return { runs: all.slice(from, from + PAGE).map(summaryOf), more: all.length > from + PAGE };
+    return { runs: all.slice(from, from + PAGE).map(summaryOf), more: all.length > from + PAGE, next: from + PAGE };
   }
   const body = await request(`/runs?from=${from}`).then((r) => (r?.ok ? r.json() : null)).catch(() => null);
+  if (asked !== generation) return null;
   if (body?.history === 'browser') {
     mode = 'browser';
     return listRuns(from);
   }
-  if (!body || !Array.isArray(body.runs)) return null;
+  const mine = from ? [] : unsaved.map(summaryOf);
+  if (!body || !Array.isArray(body.runs)) return { runs: mine, more: false, next: from, failed: true };
   mode = 'box';
   const runs = body.runs.map(parseSummary).filter((r: Summary | null): r is Summary => !!r);
-  // A run this page finished shows at once, whether or not the box has taken it yet.
-  const missing = from ? [] : unsaved.filter((u) => !runs.some((r: Summary) => r.id === u.id)).map(summaryOf);
-  return { runs: [...missing, ...runs].sort((a, b) => b.startedAt - a.startedAt), more: body.more === true };
+  const missing = mine.filter((u) => !runs.some((r: Summary) => r.id === u.id));
+  return { runs: [...missing, ...runs].sort((a, b) => b.startedAt - a.startedAt), more: body.more === true, next: from + body.runs.length };
 }
 
 /** A whole run, samples and all, to reopen it. */
 export async function getRun(id: string): Promise<Result | null> {
+  if (!mode) await listRuns(0);
   const known = held.get(id) ?? (mode === 'browser' ? readLocal().find((r) => r.id === id) : undefined);
   if (known) return known;
   if (mode === 'browser') return null;
@@ -71,13 +85,14 @@ export async function saveRun(run: Result): Promise<boolean> {
   return true;
 }
 
-/** Empties History: the box's store, or this browser's own runs. Resolves whether it did. */
+/** Empties History: the box's store, or this browser's own runs, and every run this page holds. Resolves whether it did. */
 export async function clearRuns(): Promise<boolean> {
-  if (mode === 'browser') return writeLocal([]);
+  generation++;
   // Typed, so the server does not take it for a cross-site form submission
   // (a DELETE can't be sent cross-site without the box's say-so anyway).
-  const response = await request('/runs', { method: 'DELETE', headers: { 'Content-Type': 'application/json' } });
-  if (!response?.ok) return false;
+  const ok = mode === 'browser' ? writeLocal([]) : !!(await request('/runs', { method: 'DELETE', headers: { 'Content-Type': 'application/json' } }))?.ok;
+  if (!ok) return false;
+  generation++;
   unsaved = [];
   held.clear();
   return true;

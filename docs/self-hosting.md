@@ -31,7 +31,7 @@ the address under test, then run:
 BOX=http://127.0.0.1:24610
 for p in / /history /ping; do curl -s -o /dev/null -w "%{http_code} $p\n" "$BOX$p"; done
 curl -s -o /dev/null -H 'Accept-Encoding: gzip, br, zstd' -w "%{http_code} /downloading %{size_download}\n" "$BOX/downloading"
-head -c 33554432 /dev/zero | curl -s -o /dev/null -H 'Content-Type: application/octet-stream' -w "%{http_code} /upload %{size_upload}\n" --data-binary @- "$BOX/upload"
+head -c 33554432 /dev/zero | curl -s -o /dev/null -w "%{http_code} /upload %{size_upload}\n" --data-binary @- "$BOX/upload"
 ```
 
 It passes when it prints exactly:
@@ -87,7 +87,10 @@ volumes:
 ```
 
 The container listens on `3000`; the left side of `ports` is the host
-address and port. It starts on loopback so you can prove it before anything
+address and port. It runs as UID and GID 101 and keeps runs in `/data`. A
+named volume, as here, needs nothing more; to keep runs in a directory on
+the host instead (`./data:/data`), give that directory to 101 first:
+`sudo chown 101:101 ./data`. It starts on loopback so you can prove it before anything
 else can reach it. Step 4 widens it.
 
 If the owner chose to keep runs in each browser only, add this to the

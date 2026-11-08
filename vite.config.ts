@@ -1,5 +1,5 @@
 import { defineConfig, loadEnv } from 'vite';
-import adapterBun from '@sveltejs/adapter-bun';
+import adapterNode from '@sveltejs/adapter-node';
 import adapterStatic from '@sveltejs/adapter-static';
 import { sveltekit } from '@sveltejs/kit/vite';
 import tailwindcss from '@tailwindcss/vite';
@@ -14,7 +14,7 @@ function port(env: Record<string, string>, name: string): number {
 
 // Two builds share this config, by mode:
 // - the default is the box: the page and the endpoints it measures against,
-//   one Bun server in build/ (`bun build/index.js`);
+//   one server in build/, run with Bun (`bun run start`);
 // - `demo` is the public site, the same app reading a simulated link, as
 //   static files in build-site/ for Cloudflare Pages (`bun run build:site`).
 function kit(mode: string) {
@@ -30,8 +30,13 @@ function kit(mode: string) {
       output: { bundleStrategy: 'single' as const },
     };
   return {
-    // An upload posts 8 MiB at a time; Bun turns away bodies over 512 KB by default.
-    adapter: adapterBun({ precompress: true, serverOptions: { maxRequestBodySize: 64 * 1024 * 1024 } }),
+    // An upload posts 8 MiB at a time: the server takes bodies up to BODY_SIZE_LIMIT (see `bun run start`).
+    adapter: adapterNode({ precompress: true }),
+    // A box is reached at whatever address its owner gives it, over plain
+    // http as often as not, which no build can know; so no request is turned
+    // away for its origin. The one route that keeps anything (/runs) takes
+    // only JSON, which a page elsewhere cannot send without the box's say-so.
+    csrf: { trustedOrigins: ['*'] },
     paths: { relative: false },
     output: { bundleStrategy: 'single' as const },
   };

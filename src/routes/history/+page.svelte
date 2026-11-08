@@ -12,14 +12,149 @@
   section sets the type's sizes (--fs, --lab), so the empty state's line
   takes the table's.
 -->
+<script module lang="ts">
+  import type { Summary } from '../../lib/engine';
+
+  /** The list as last shown, kept across visits, so Back finds it as it was left. next is where the store's next page starts. */
+  const list = $state({ runs: [] as Summary[], more: false, next: 0, loaded: false });
+</script>
+
 <script lang="ts">
-  import { resolve } from '$app/paths';
-  import { formatMs, formatRate, historyMode } from '../../lib/engine';
+  import { onMount, tick } from 'svelte';
+  import { clearRuns, formatMs, formatRate, historyMode, listRuns } from '../../lib/engine';
   import { KEY_LABEL, UNIT, VALUE } from '../../lib/ui/classes';
+  import { runHref } from '../../lib/ui/nav';
   import OsMark from '../../lib/ui/OsMark.svelte';
   import { deviceName, deviceWords, modeName, whenOf } from '../../lib/ui/rows';
-  import { app } from '../../lib/ui/stage';
-  import { ui } from '../../lib/ui/state.svelte';
+  import { is, ui } from '../../lib/ui/state.svelte';
+
+  /**
+   * Rows in view rise RISE_T each, RISE_STEP apart, on opening and on Load
+   * more alike, and leave the same way on a clear; the empty state rises over
+   * EMPTY_T, slower after a clear.
+   */
+  const RISE_T = 200;
+  const RISE_STEP = 10;
+  const EMPTY_T = [200, 500];
+  const EASE = 'cubic-bezier(0.23, 1, 0.32, 1)';
+  const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /** Whether Clear history is asking to confirm, a clear is under way or failed, and the box could not be reached. */
+  let ask = $state(false);
+  let clearing = false;
+  let clearFailed = $state(false);
+  let failed = $state(false);
+  /** The clock relative times are counted from, moved on while the list is up. */
+  let now = $state(Date.now());
+  let section: HTMLElement;
+  let table: HTMLElement;
+
+  onMount(() => {
+    // What is held rises in at once; runs taken since, in any browser, join
+    // the rows in place when they land, and runs cleared elsewhere go.
+    void rise(is.back || ui.screen !== 'idle' ? 40 : 0);
+    void listRuns(0).then((page) => {
+      if (!page) return;
+      failed = !!page.failed;
+      const same =
+        list.loaded &&
+        page.runs.length <= list.runs.length &&
+        (page.more || page.runs.length === list.runs.length) &&
+        page.runs.every((r, i) => r.id === list.runs[i].id);
+      if (same) return;
+      Object.assign(list, { runs: page.runs, more: page.more, next: page.next, loaded: true });
+      void rise(0);
+    });
+    const clock = setInterval(() => (now = Date.now()), 30000);
+    return () => clearInterval(clock);
+  });
+
+  /** Load more: the next ten rows rise in under the last at the pace the list opens with, those in view one after another. */
+  async function loadMore(): Promise<void> {
+    const page = await listRuns(list.next);
+    if (!page) return;
+    pin(true);
+    const from = list.runs.length;
+    const fresh = page.runs.filter((r) => !list.runs.some((x) => x.id === r.id));
+    Object.assign(list, { runs: [...list.runs, ...fresh], more: page.more, next: page.next });
+    await tick();
+    const rows = [...section.querySelectorAll<HTMLElement>('#histList > li')].slice(from);
+    inView(rows).forEach((li, k) => move(li, true, RISE_STEP * k, RISE_T));
+    // Focus moves to the first new run, since the key may be gone.
+    rows[0]?.querySelector('a')?.focus({ preventScroll: true });
+  }
+
+  /**
+   * Every run goes: the heads, the rows in view one after another and the
+   * list's actions leave the way they rose, then the empty state comes up
+   * where Start sits. Nothing is taken out until it has gone, so nothing on
+   * screen moves. A clear the box refuses brings them all back, and says so.
+   */
+  async function clearAll(): Promise<void> {
+    if (clearing) return;
+    clearing = true;
+    ask = false;
+    clearFailed = false;
+    document.getElementById('menu')?.focus({ preventScroll: true });
+    const out = parts().map((n, k) => move(n, false, RISE_STEP * k, RISE_T));
+    const [ok] = await Promise.all([clearRuns(), ...out.map((a) => a.finished)]);
+    clearing = false;
+    if (ok) {
+      Object.assign(list, { runs: [], more: false, next: 0, loaded: true });
+      failed = false;
+      await tick();
+      for (const a of out) a.cancel();
+      riseEmpty(EMPTY_T[1]);
+    } else {
+      for (const a of out) a.reverse();
+      clearFailed = true;
+    }
+  }
+
+  /**
+   * On a wide screen the list sits centred while it fits. Pinning holds its
+   * top where it is, so rows added under the last grow it downwards; nothing
+   * already on screen moves.
+   */
+  function pin(on: boolean): void {
+    section.style.paddingTop = on ? `${table.getBoundingClientRect().top - section.getBoundingClientRect().top}px` : '';
+    section.classList.toggle('pinned', on);
+  }
+
+  /** The heads, the rows in view, then the list's actions: what rises and leaves, in order. */
+  function parts(): HTMLElement[] {
+    const rows = inView([...section.querySelectorAll<HTMLElement>('#histList > li')]);
+    return [section.querySelector<HTMLElement>('#histHead'), ...rows, section.querySelector<HTMLElement>('#histFoot')].filter((n): n is HTMLElement => !!n);
+  }
+
+  /** The rows on screen; those past it are simply there. */
+  function inView(rows: HTMLElement[]): HTMLElement[] {
+    return rows.filter((li) => {
+      const r = li.getBoundingClientRect();
+      return r.bottom > 0 && r.top < innerHeight;
+    });
+  }
+
+  /** Everything in view rises in one after another at one even pace. */
+  async function rise(delay: number): Promise<void> {
+    pin(false);
+    await tick();
+    if (!list.runs.length) return riseEmpty(EMPTY_T[0], delay);
+    parts().forEach((n, k) => move(n, true, delay + RISE_STEP * k, RISE_T));
+  }
+
+  function riseEmpty(duration: number, delay = 0): void {
+    const n = section.querySelector<HTMLElement>('#histEmpty');
+    if (n) move(n, true, delay, duration, 8);
+  }
+
+  /** One element rising into place, up dy px as it fades in, or leaving the way it came, on the page's strong ease-out. */
+  function move(n: HTMLElement, entering: boolean, delay: number, duration: number, dy = 12): Animation {
+    if (REDUCED) dy = 0;
+    const away = { opacity: 0, translate: `0 ${entering ? dy : 6}px` };
+    const here = { opacity: 1, translate: '0 0' };
+    return n.animate(entering ? [away, here] : [here, away], { duration, delay, easing: EASE, fill: entering ? 'backwards' : 'forwards' });
+  }
 
   /** A column head, in the keys' lettering like every label. */
   const HEAD = `${KEY_LABEL} whitespace-nowrap`;
@@ -44,11 +179,11 @@
     'group-[:not(.asking)]/clear:pointer-events-none group-[:not(.asking)]/clear:invisible group-[:not(.asking)]/clear:opacity-0 group-[:not(.asking)]/clear:[transition:opacity_200ms_var(--ease-out),visibility_0s_200ms,transform_160ms_var(--ease-out),background-color_160ms_ease,color_160ms_ease,--lift_200ms_ease]';
 
   const rows = $derived(
-    ui.runs.map((r) => {
+    list.runs.map((r) => {
       const down = formatRate(r.download.mbps);
       const up = formatRate(r.upload.mbps);
       const ping = formatMs(r.latency.idleMs);
-      const when = whenOf(r.startedAt, ui.now);
+      const when = whenOf(r.startedAt, now);
       const mode = modeName(r.mode);
       const said = [when, mode, deviceName(r.device)].filter(Boolean).join(', ');
       return {
@@ -69,10 +204,9 @@
   // A phone's table fades out at its right edge only where it runs on past
   // it, and what scrolls sideways under When passes behind ground. Rows the
   // page scrolls up pass behind the heads, over ground, on a wide screen.
-  let scroller: HTMLElement;
-  let fade = $state({ r: 0, edge: 0, down: false, slid: false });
+    let fade = $state({ r: 0, edge: 0, down: false, slid: false });
   const edges = () => {
-    const s = scroller;
+    const s = table;
     fade = {
       r: Math.min(32, Math.max(0, s.scrollWidth - s.clientWidth - s.scrollLeft)),
       edge: s.scrollLeft + s.clientWidth,
@@ -84,20 +218,30 @@
     void rows.length;
     edges();
   });
-  const history = () => app.stage?.history;
 </script>
 
 <svelte:head><title>History · Boomerang</title></svelte:head>
-<svelte:window onresize={edges} onscroll={edges} />
+<svelte:window
+  onresize={edges}
+  onscroll={edges}
+  onkeydown={(ev) => {
+    // Escape takes back the question first; the next one leaves the list.
+    if (ev.key === 'Escape' && ask) {
+      ask = false;
+      ev.stopImmediatePropagation();
+    }
+  }}
+/>
 
 <section
   class="relative z-1 flex min-h-[calc(100dvh-var(--bar,0px)-var(--head))] flex-col pt-5 pb-[calc(16px+env(safe-area-inset-bottom))] [--fs:16px] [--lab:12px] narrow:[--side:calc((100vw-var(--col))/2)] wide:justify-center wide:px-(--px) wide:pt-10 wide:pb-7 wide:[--fs:21px] wide:[--lab:14px] [&.pinned]:justify-start"
   class:down={fade.down}
   class:slid={fade.slid}
   id="hist"
+  bind:this={section}
   aria-label="History"
 >
-  <div class="relative flex-initial narrow:overflow-x-auto narrow:[scrollbar-width:none] narrow:[&::-webkit-scrollbar]:hidden" id="histScroll" bind:this={scroller} onscroll={edges}>
+  <div class="relative flex-initial narrow:overflow-x-auto narrow:[scrollbar-width:none] narrow:[&::-webkit-scrollbar]:hidden" id="histScroll" bind:this={table} onscroll={edges}>
     <!-- One table on every screen: a row of heads and one line per run, in
          the order people scan for: when, the results, then how it ran. Each
          column is as wide as its widest value. A wide screen spreads the
@@ -114,7 +258,7 @@
         class="relative z-2 col-span-full grid wide:sticky wide:top-(--head) grid-cols-subgrid items-baseline pb-4 wide:pb-2.5 in-[.down]:bg-ground in-[.down]:after:pointer-events-none in-[.down]:after:absolute in-[.down]:after:inset-x-0 in-[.down]:after:top-full in-[.down]:after:h-3 in-[.down]:after:bg-[linear-gradient(var(--color-ground)_50%,transparent)] in-[.down]:after:content-['']"
         id="histHead"
         aria-hidden="true"
-        hidden={!ui.runs.length}
+        hidden={!list.runs.length}
       >
         <span class="{HEAD} {WHEN} text-ink-3">When</span><span class="{HEAD} text-lime">Download</span><span class="{HEAD} text-orange"
           >Upload</span
@@ -131,7 +275,7 @@
           >
             <a
               class="col-span-full grid grid-cols-subgrid items-baseline py-(--pad) text-left transition-opacity duration-160 ease-[ease] focus-visible:rounded-sm focus-visible:-outline-offset-2 active:opacity-70"
-              href={resolve('/history/[id]', { id: r.id })}
+              href={runHref(r.id)}
               aria-label={r.label}
             >
               <span class="{VALUE} {WHEN}" aria-hidden="true"><time data-testid="history-time" datetime={r.iso}>{r.when}</time></span>
@@ -155,32 +299,32 @@
   <div
     class="flex flex-none flex-wrap items-start gap-x-3 pt-4 pb-1 narrow:mt-auto narrow:flex-col narrow:items-stretch narrow:gap-y-3 narrow:px-(--side) narrow:pb-0"
     id="histFoot"
-    hidden={!ui.runs.length}
+    hidden={!list.runs.length}
   >
-    <button class="glass {CK} text-ink-2 fine:hover:text-ink" type="button" hidden={!ui.more} data-testid="history-more" onclick={() => history()?.loadMore()}
+    <button class="glass {CK} text-ink-2 fine:hover:text-ink" type="button" hidden={!list.more} data-testid="history-more" onclick={loadMore}
       ><span class={CK_LABEL}>Load more</span></button
     >
-    <div class="group/clear ml-auto grid justify-items-end *:col-1 *:row-1 narrow:ml-0 narrow:justify-items-stretch" class:asking={ui.ask}>
+    <div class="group/clear ml-auto grid justify-items-end *:col-1 *:row-1 narrow:ml-0 narrow:justify-items-stretch" class:asking={ask}>
       <button
         class="glass hollow {CK} text-ink-2 fine:hover:text-ink {ASKED}"
         id="histClear"
         type="button"
-        inert={ui.ask}
+        inert={ask}
         data-testid="history-clear"
         data-kick=""
         onclick={() => {
-          ui.ask = true;
+          ask = true;
           document.getElementById('histNo')?.focus({ preventScroll: true });
         }}><span class={CK_LABEL}>Clear history</span></button
       >
-      <div class="flex gap-x-2 narrow:grid narrow:grid-cols-[1fr_1fr]" role="group" aria-label="Clear history?" inert={!ui.ask}>
+      <div class="flex gap-x-2 narrow:grid narrow:grid-cols-[1fr_1fr]" role="group" aria-label="Clear history?" inert={!ask}>
         <button
           class="glass {CK} text-ink-2 fine:hover:text-ink {UNASKED}"
           id="histNo"
           type="button"
           data-kick=""
           onclick={() => {
-            ui.ask = false;
+            ask = false;
             document.getElementById('histClear')?.focus({ preventScroll: true });
           }}><span class={CK_LABEL}>Cancel</span></button
         >
@@ -189,15 +333,19 @@
           type="button"
           data-testid="history-clear-confirm"
           data-kick=""
-          onclick={() => history()?.clearAll()}><span class={CK_LABEL}>Clear all</span></button
+          onclick={clearAll}><span class={CK_LABEL}>Clear all</span></button
         >
       </div>
     </div>
-    {#if ui.clearFailed}
+    {#if clearFailed}
       <p class="{KEY_LABEL} basis-full pt-3 text-red narrow:text-center" role="status" data-testid="history-clear-failed">History couldn't be cleared</p>
     {/if}
   </div>
-  {#if ui.loaded && !ui.runs.length}
+  {#if failed}
+    <!-- The box couldn't be reached: what this page holds, and a line saying so. -->
+    <p class="{KEY_LABEL} pt-4 text-red narrow:px-(--side) narrow:text-center" role="status" data-testid="history-failed">History couldn't load</p>
+  {/if}
+  {#if list.loaded && !list.runs.length && !failed}
     <!-- No runs yet: said plainly where Start sits in idle, in a key's lettering over a row's value.
          Centred with transform, not translate: its rise animates translate, which would replace it. -->
     <div class="absolute inset-x-0 top-[calc(var(--idle-y)-var(--head))] grid justify-items-center gap-y-2.5 text-center [transform:translateY(-50%)]" id="histEmpty">

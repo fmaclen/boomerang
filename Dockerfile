@@ -14,10 +14,13 @@ RUN bun run build
 FROM oven/bun:1.4-alpine AS box
 WORKDIR /app
 COPY --from=build /app/build ./build
-RUN mkdir /data && chown bun:bun /data
-USER bun
+# UID and GID 101, as every image before, so a volume an older one wrote stays writable.
+RUN addgroup -S -g 101 boomerang && adduser -S -D -H -u 101 -G boomerang boomerang && mkdir /data && chown 101:101 /data
+USER 101:101
 # "browser" keeps runs in each visitor's browser and never opens the store.
 ENV HISTORY=box RUNS_DB=/data/runs.sqlite HOST=0.0.0.0 PORT=3000
+# The page posts 8 MiB at a time; the server takes bodies up to this.
+ENV BODY_SIZE_LIMIT=64M
 # A stop waits this many seconds for transfers in flight before it ends them.
 ENV SHUTDOWN_TIMEOUT=2
 VOLUME /data

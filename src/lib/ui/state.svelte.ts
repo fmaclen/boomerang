@@ -1,66 +1,61 @@
-// What the markup renders from. The page's choreography is CSS keyed on these
-// (see the motion section of app.css): a change here starts a move, and the
-// stylesheet carries it through on the run's own durations and curves. Only
-// what follows live readings is moved from script (see stage.ts).
+// What the page is showing, in two values the markup and the stylesheet key
+// on (see the motion section of app.css): the view the address asks for,
+// and how far the run on screen has come. Everything else is derived from
+// them here, or belongs to the one component that shows it.
 
-import type { Mode, Summary } from '../engine';
+import type { Mode } from '../engine';
 
-export interface Detail {
-  label: string;
-  /** A figure, its digits and unit apart; or a word; or a device with its system's mark. */
-  value?: string;
-  unit?: string;
-  text?: string;
-  os?: string;
-  mark?: string;
-}
+/**
+ * start: the run's screen, idle or with a run on it, at home or at the
+ * address a finished run takes; list: History; past: a saved run, reopened;
+ * loading and missing: a run's address while its run is fetched, or when
+ * History hasn't got it.
+ */
+export type View = 'start' | 'list' | 'past' | 'loading' | 'missing';
 
-export interface Stat {
-  value: string;
-  unit: string;
-  /** Measured yet: until then it is a greyed zero in its reading's shape. */
-  lit: boolean;
-}
+/** A run's beats, in order: measuring each phase, measured, its result formed, then settled. */
+const BEATS = ['idle', 'latency', 'download', 'upload', 'measured', 'formed', 'settled'] as const;
+export type Beat = (typeof BEATS)[number];
 
 export const ui = $state({
   mode: 'adaptive' as Mode,
+  view: 'start' as View,
   /** idle; run, from the press of Start to the way home; exit, the way home. */
   screen: 'idle' as 'idle' | 'run' | 'exit',
   /** How much faster than New test's own the way home runs: quicker when History takes the scene home under it. */
   pace: 1,
-  /** Stop has lit into New test: the result has formed, or the run failed. */
-  lit: false,
-  /** The result has formed, and its upload line has taken over from the live number. */
-  formed: false,
-  landed: false,
-  settled: false,
-  /** The phase a measuring run is in, for its test id; empty otherwise. */
-  phase: '' as '' | 'latency' | 'download' | 'upload',
-  /** Each direction's phase has begun, which lights its chart's name. */
-  dirOn: [false, false],
-  progress: 0,
-  stats: [] as Stat[],
-
-  /** The list is the page (/history); a past run is shown (/history/[id]); either is History, open. */
-  list: false,
-  reopened: false,
-  open: false,
-  /** /history/[id] names a run History doesn't have. */
-  missing: false,
-  /** Home just took over from the list, so Start comes back the way it left. */
-  closing: false,
-  /** A reopened run on its way back to the list. */
-  back: false,
-  /** The History key can open History now: idle, or a result is up. */
-  canOpen: true,
-  runs: [] as Summary[],
-  /** Loaded at least once since History opened, so an empty list means none. */
-  loaded: false,
-  more: false,
-  /** Whether Clear history is asking to confirm, and whether the last clear failed. */
-  ask: false,
-  clearFailed: false,
-  /** The clock History's relative times are counted from. */
-  now: Date.now(),
-  details: [] as Detail[],
+  beat: 'idle' as Beat,
+  /** Why the run on screen stopped short of a result, or empty. */
+  failed: '',
 });
+
+const reached = (b: Beat) => BEATS.indexOf(ui.beat) >= BEATS.indexOf(b);
+
+export const is = {
+  /** History, in any of its views: the bottom key steps aside, Start leaves, the scene dims. */
+  get open() {
+    return ui.view !== 'start';
+  },
+  /** A past run on its way back under the list. */
+  get back() {
+    return ui.view === 'list' && ui.screen === 'run';
+  },
+  get reopened() {
+    return ui.view === 'past' || is.back;
+  },
+  /** Stop has lit into New test: the result has formed, or the run failed. */
+  get lit() {
+    return !!ui.failed || reached('formed');
+  },
+  get formed() {
+    return !ui.failed && reached('formed');
+  },
+  /** A run is measuring at home, for its test ids. */
+  get measuring() {
+    return ui.view === 'start' && ui.screen === 'run' && !ui.failed && !reached('measured') && ui.beat !== 'idle';
+  },
+  /** The History key can open History: idle, or a result is up. */
+  get canOpen() {
+    return ui.view === 'start' && (ui.screen === 'idle' || (ui.screen === 'run' && is.lit));
+  },
+};

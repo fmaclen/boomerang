@@ -34,7 +34,12 @@ export class LiveRun {
         d.P.r0 = Math.max(d.P.ulEnd + LAND_UL, this.clock());
         void saveRun(r).then((kept) => kept && !this.stopped && onSaved(r.id));
       },
-      () => this.stopped || this.data.fail(this.clock()),
+      (error: unknown) => {
+        if (this.stopped) return;
+        // The reason a run failed (a refused upload, an unreachable box) is in the console.
+        console.warn('Boomerang: the run failed:', error);
+        this.data.fail(this.clock(), error instanceof Error ? error.message : String(error));
+      },
     );
   }
 

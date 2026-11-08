@@ -22,7 +22,8 @@ const run = (i: number): Result => ({
   upload: { mbps: 800, bytes: 3e9, seconds: 30, samples: [{ t: 0.1, mbps: 800 }] },
   latency: { idleMs: 1, jitterMs: 0.1 },
 });
-const post = (body: unknown) => runs.POST({ request: new Request('http://box/runs', { method: 'POST', body: JSON.stringify(body) }) });
+const post = (body: unknown, type = 'application/json') =>
+  runs.POST({ request: new Request('http://box/runs', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': type } }) });
 const list = async (from: number) => (await runs.GET({ url: new URL(`http://box/runs?from=${from}`) })).json();
 
 test('the store takes whole runs, once each, and refuses anything else', async () => {
@@ -93,4 +94,30 @@ test('an upload is answered only once its last byte is in', async () => {
   expect(res.status).toBe(200);
   expect(pulls).toBe(20);
   expect(read).toBe(20 * 65536);
+});
+
+test('paging takes any input without failing', async () => {
+  for (const from of ['1e308', 'Infinity', '-5', 'abc', '']) {
+    const res = await runs.GET({ url: new URL(`http://box/runs?from=${from}`) });
+    expect(res.status).toBe(200);
+  }
+});
+
+test('a run is posted as JSON or not at all', async () => {
+  expect((await post(run(40), 'text/plain')).status).toBe(415);
+});
+
+test('a run past 256 KiB is turned away while it is still arriving', async () => {
+  let pulls = 0;
+  const body = new ReadableStream<Uint8Array>({
+    pull(c) {
+      if (++pulls > 20) return c.close();
+      c.enqueue(new Uint8Array(64 * 1024).fill(32));
+    },
+  });
+  const res = await runs.POST({
+    request: new Request('http://box/runs', { method: 'POST', body, headers: { 'Content-Type': 'application/json' }, duplex: 'half' } as RequestInit),
+  });
+  expect(res.status).toBe(413);
+  expect(pulls).toBeLessThan(10);
 });

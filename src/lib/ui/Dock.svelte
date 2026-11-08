@@ -12,8 +12,9 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
   import { KEY_LABEL } from './classes';
+  import { again } from './nav';
   import { app } from './stage';
-  import { ui } from './state.svelte';
+  import { is, ui } from './state.svelte';
 
   const modes = [
     { mode: 'adaptive', label: 'Quick' },
@@ -33,6 +34,7 @@
 </script>
 
 <div class="dock group/dock relative mt-6 h-12 w-(--col) flex-none [container-type:inline-size] wide:[grid-area:dock]" id="dock" style:--m={ui.mode === 'fixed' ? 1 : 0}>
+  <div class="dim -inset-3"></div>
   <div
     class="track glass absolute inset-0 z-0 bg-[rgba(6,10,9,0.46)] shadow-[inset_0_2px_6px_rgba(0,0,0,0.6),inset_0_-1px_0_rgba(255,255,255,0.05)] before:opacity-55"
     id="track"
@@ -44,7 +46,7 @@
   <div class="dkey glass absolute z-2" id="dkey">
     <div class="absolute inset-0 rounded-[inherit] bg-[rgba(241,247,235,0.13)]" id="lit"></div>
   </div>
-  <div class="absolute inset-0 grid grid-cols-[1fr_1fr]" role="radiogroup" aria-label="Test length" inert={ui.screen !== 'idle' || ui.open}>
+  <div class="absolute inset-0 grid grid-cols-[1fr_1fr]" role="radiogroup" aria-label="Test length" inert={ui.screen !== 'idle' || is.open}>
     {#each modes as m, i (m.mode)}
       <button
         class="mode group relative z-1 grid place-items-center rounded-full text-ink-3 aria-checked:z-4 aria-checked:text-ink fine:hover:aria-[checked=false]:text-ink-2"
@@ -65,11 +67,11 @@
   <button
     class="action group absolute inset-0 z-4 grid place-items-center rounded-full"
     type="button"
-    inert={ui.screen !== 'run' || ui.open || ui.lit}
+    inert={ui.screen !== 'run' || is.open || is.lit}
     aria-label="Stop"
     data-testid="stop"
     data-kick="dkey"
-    onclick={() => app.stage?.pressAction()}
+    onclick={() => app.stage?.home()}
     ><span
       class="{KEY_LABEL} col-1 row-1 inline-block text-ink-2 [transition:transform_160ms_var(--ease-out),color_160ms_ease] group-active:[transform:scale(0.97)] motion-reduce:group-active:[transform:none] fine:group-hover:text-ink"
       id="actStop"><span class="inline-block"><span class="inline-block">Stop</span></span></span
@@ -78,8 +80,15 @@
   <a
     class="action group absolute inset-0 z-5 grid place-items-center rounded-full"
     href={resolve('/')}
-    inert={ui.screen !== 'run' || ui.open || !ui.lit}
+    inert={ui.screen !== 'run' || is.open || !is.lit}
+    onclick={(ev) => {
+      // After a run that failed, a fresh run, from here.
+      if (ui.failed && !(ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey)) {
+        ev.preventDefault();
+        app.stage?.retry();
+      } else again(ev);
+    }}
     data-testid="new-run"
-    data-kick="dkey"><span class="{KEY_LABEL} {PRESSED}" id="actNew">New test</span></a
+    data-kick="dkey"><span class="{KEY_LABEL} {PRESSED}" id="actNew">{ui.failed ? 'Try again' : 'New test'}</span></a
   >
 </div>

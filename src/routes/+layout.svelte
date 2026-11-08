@@ -9,17 +9,19 @@
 -->
 <script lang="ts">
   import { onMount, untrack, type Snippet } from 'svelte';
-  import { goto, onNavigate } from '$app/navigation';
-  import { resolve } from '$app/paths';
+  import { onNavigate } from '$app/navigation';
   import { page } from '$app/state';
   import '../app.css';
+  import { cameras } from '../lib/scene';
+  import { fitReach } from '../lib/scene/ping';
   import DemoBar from '../lib/ui/DemoBar.svelte';
   import Dock from '../lib/ui/Dock.svelte';
   import Eye from '../lib/ui/Eye.svelte';
   import Instruments from '../lib/ui/Instruments.svelte';
   import TopBar from '../lib/ui/TopBar.svelte';
+  import * as nav from '../lib/ui/nav';
   import { Stage, app } from '../lib/ui/stage';
-  import { ui } from '../lib/ui/state.svelte';
+  import { is, ui } from '../lib/ui/state.svelte';
 
   let { children }: { children: Snippet } = $props();
   const DEMO = import.meta.env.MODE === 'demo';
@@ -28,41 +30,99 @@
   let root: HTMLElement;
   let canvas: HTMLCanvasElement;
 
+  /**
+   * Where the run's screen leaves room for the swarm, and the bands its
+   * figures and a run's details take, in the app's box: the cameras and the
+   * swarm's size follow, as variables the eye, Start and the details place
+   * themselves by, and as the stage's cameras for the scene.
+   */
+  function measure(): void {
+    const app0 = root.getBoundingClientRect();
+    // Each part where it sits at rest, without its rise.
+    const at = (id: string) => {
+      const el = document.getElementById(id)!;
+      const r = el.getBoundingClientRect();
+      const dy = parseFloat(getComputedStyle(el).translate.split(' ')[1] ?? '0') || 0;
+      return new DOMRect(r.left - app0.left, r.top - app0.top - dy, r.width, r.height);
+    };
+    const wide = matchMedia('(min-width: 900px) and (min-height: 560px)').matches;
+    const [stage, dock, top, charts, chartD, chartU, stats] = ['stage', 'dock', 'top', 'charts', 'chartD', 'chartU', 'stats'].map(at);
+    const { S, run, idle } = cameras(innerWidth, stage, dock.top, wide);
+    const band = wide ? top : charts;
+    const vars: Record<string, string> = {
+      '--s': `${S.toFixed(2)}px`,
+      '--run-x': `${run.cx}px`,
+      '--run-y': `${run.cy}px`,
+      '--idle-x': `${idle.cx}px`,
+      '--idle-y': `${idle.cy}px`,
+      '--idle-z': `${idle.zoom}`,
+      '--band-x': `${band.left}px`,
+      '--band-w': `${band.width}px`,
+      '--stats-top': `${stats.top}px`,
+      '--dock-bottom': `${dock.bottom}px`,
+    };
+    for (const k in vars) root.style.setProperty(k, vars[k]);
+    // Each ping throw loops out only as far as the window and the interface leave room for.
+    const pad = (r: DOMRect, p: number) => [r.left - p, r.top - p, r.right + p, r.bottom + p];
+    const union = (a: DOMRect, b: DOMRect) => new DOMRect(a.left, a.top, Math.max(a.right, b.right) - a.left, Math.max(a.bottom, b.bottom) - a.top);
+    const parts = wide ? [pad(chartD, 16), pad(chartU, 16), pad(stats, 12)] : [pad(union(charts, stats), 12)];
+    fitReach(run, S, [0, -app0.top, innerWidth, innerHeight - app0.top], [pad(top, 10), pad(dock, 12), ...parts]);
+    app.stage?.place(S, { run, idle }, app0.top);
+  }
+
   onMount(() => {
-    app.stage = new Stage(root, canvas);
-    return () => app.stage?.destroy();
+    const stage = (app.stage = new Stage(root, canvas));
+    stage.onSaved = nav.saved;
+    measure();
+    nav.show(page.route.id, page.params.id);
+    // A press sweeps the light once round the rim of the key it lands on.
+    const kick = (ev: PointerEvent) => {
+      const key = (ev.target as Element).closest?.('[data-kick]');
+      const rim = key && (key.getAttribute('data-kick') ? document.getElementById(key.getAttribute('data-kick')!) : (key as HTMLElement));
+      if (!rim || stage.reduced) return;
+      rim.classList.remove('kick');
+      void rim.offsetWidth;
+      rim.classList.add('kick');
+    };
+    const kicked = (ev: AnimationEvent) => ev.animationName === 'rim-sweep' && (ev.target as HTMLElement).classList.remove('kick');
+    addEventListener('resize', measure);
+    document.addEventListener('pointerdown', kick);
+    document.addEventListener('animationend', kicked);
+    return () => {
+      stage.destroy();
+      removeEventListener('resize', measure);
+      document.removeEventListener('pointerdown', kick);
+      document.removeEventListener('animationend', kicked);
+    };
   });
 
   // The page follows the address, whichever way it changed: a link, the
-  // back and forward buttons, or a reload. Only the address: what the stage
+  // back and forward buttons, or a reload. Only the address: what showing it
   // reads of the page's state must not rerun it.
   $effect(() => {
-    const id = page.route.id;
-    const run = page.params.id;
-    untrack(() => app.stage?.history.route(id, run));
+    const route = page.route.id;
+    const id = page.params.id;
+    untrack(() => app.stage && nav.show(route, id));
   });
 
   // What leaves with a page (Start, the list, a run's details) goes on the
   // old curves, as a snapshot (see the view transitions in app.css); what
-  // stays moves itself.
-  onNavigate((nav) => {
-    if (!document.startViewTransition || matchMedia('(prefers-reduced-motion: reduce)').matches || app.quiet) return;
+  // stays moves itself. A transition cut short by the next navigation is fine.
+  onNavigate((navigation) => {
+    if (!document.startViewTransition || matchMedia('(prefers-reduced-motion: reduce)').matches || nav.quiet) return;
     return new Promise((done) => {
-      document.startViewTransition(async () => {
+      const vt = document.startViewTransition(async () => {
         done();
-        await nav.complete;
+        await navigation.complete.catch(() => {});
       });
+      vt.finished.catch(() => {});
+      vt.ready.catch(() => {});
+      vt.updateCallbackDone.catch(() => {});
     });
   });
-
-  const keydown = (ev: KeyboardEvent) => {
-    if (ev.key !== 'Escape' || !ui.open) return;
-    if (ui.ask) ui.ask = false;
-    else void goto(ui.list ? resolve('/') : resolve('/history'));
-  };
 </script>
 
-<svelte:window onkeydown={keydown} />
+<svelte:window onkeydown={(ev) => ev.key === 'Escape' && nav.escape()} />
 
 <canvas class="pointer-events-none fixed inset-0 -z-2 block size-full" bind:this={canvas}></canvas>
 {#if DEMO}<DemoBar />{/if}
@@ -72,18 +132,15 @@
   bind:this={root}
   style:--pace={ui.pace}
   data-screen={ui.screen}
-  data-lit={on(ui.lit)}
-  data-formed={on(ui.formed)}
-  data-landed={on(ui.landed)}
-  data-open={on(ui.open)}
-  data-reopened={on(ui.reopened)}
-  data-back={on(ui.back)}
-  data-list={on(ui.list)}
-  data-closing={on(ui.closing)}
+  data-lit={on(is.lit)}
+  data-formed={on(is.formed)}
+  data-open={on(is.open)}
+  data-reopened={on(is.reopened)}
+  data-back={on(is.back)}
+  data-list={on(ui.view === 'list')}
 >
-  <!-- The shade History casts over the whole scene, and the interface over the scene behind it, so the keys and figures always read. -->
+  <!-- The shade History casts over the whole scene; each part of the interface casts its own (.dim), so the keys and figures always read. -->
   <div class="fixed inset-0 -z-1 bg-ground" id="histDim"></div>
-  {#each ['dimTop', 'dimDock', 'dimA', 'dimB', 'dimC'] as id (id)}<div class="dim" {id}></div>{/each}
   <TopBar />
   <main>
     <!-- The run's screen: one centred column on the phone; on a wide screen

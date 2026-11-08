@@ -22,7 +22,7 @@
     })
     .catch(() => {});
 
-  const running = $derived(ui.screen === 'run' && !ui.reopened);
+  const running = $derived(ui.screen === 'run' && ui.view === 'start');
   /**
    * The keys and the note hand over rather than cross, so the bar never
    * shows both: at Start the keys go, then the note comes, done in a second

@@ -85,3 +85,30 @@ export const pingFlown = (u: number) => lookup(PT.time, PT.s, clamp(u, 0, 1));
 /** The share of the flight's time at which a throw has flown share d of its path. */
 export const pingTimeOf = (d: number) => lookup(PT.s, PT.time, d);
 export const pingPath = (i: number, u: number) => pingAt(i, pingFlown(u));
+
+/**
+ * Trims each throw's loop to the room in its direction: up to PING_MAX, as
+ * long as every point of it stays inside the window (x0..x1, y0..y1) and
+ * clear of the interface's boxes, a margin of the swarm's size away.
+ */
+export function fitReach(c: { cx: number; cy: number }, S: number, bounds: number[], boxes: number[][]): void {
+  const pad = S * 0.12 + 6;
+  const [x0, y0, x1, y1] = bounds;
+  const roomy = (x: number, y: number) =>
+    x > x0 + pad && x < x1 - pad && y > y0 + pad && y < y1 - pad && boxes.every(([a, b, c, d]) => x < a - pad || x > c + pad || y < b - pad || y > d + pad);
+  PING_ANGLE.forEach((_, j) => {
+    let lo = PING_MIN;
+    let hi = PING_MAX;
+    for (let it = 0; it < 16; it++) {
+      pingReach[j] = (lo + hi) / 2;
+      let ok = true;
+      for (let q = 0; q <= 60 && ok; q++) {
+        const [r, th] = pingPath(j, q / 60);
+        ok = roomy(c.cx + S * r * Math.cos(th), c.cy - S * r * Math.sin(th));
+      }
+      if (ok) lo = pingReach[j];
+      else hi = pingReach[j];
+    }
+    pingReach[j] = lo;
+  });
+}

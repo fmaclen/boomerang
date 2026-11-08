@@ -63,6 +63,8 @@
 /* How far a hollow key's outline is lifted: 0 at rest, 1 under the cursor, more pressed. */
 @property --lift { syntax: '<number>'; inherits: true; initial-value: 0; }
 @property --hollow { syntax: '<number>'; inherits: true; initial-value: 0; }
+/* How much light the whole of a key's rim catches: a little more under a resting cursor. */
+@property --even { syntax: '<number>'; inherits: true; initial-value: 0; }
 @keyframes rim-sweep { from { --kick: 0deg; } to { --kick: 360deg; } }
 
 :root {
@@ -92,18 +94,19 @@
 @layer components {
   /* Every key is glass, the way iOS draws its own buttons: a dark see-through
      face over the scene, one soft shadow under it, and a hairline rim of light
-     brightest on one edge. The light follows the hand (the cursor, or the
-     phone's tilt), drifts slowly along the rim until there is one, and
-     sweeps once round it on a press. Script sets per key where the bright
-     edge sits (--hand), how strongly it is lit (--hi) and how much light the
-     whole rim catches when the light is right over the key (--even). */
+     brightest on the upper left, the side the scene's light comes from.
+     Under a resting cursor the whole rim catches a little more light (--even),
+     and a press sweeps the light once round it. */
   .glass {
     position: relative; isolation: isolate; box-sizing: border-box; border-radius: 999px;
     background-color: var(--glass);
     -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
     box-shadow: 0 14px 28px -14px rgba(0, 0, 0, 0.8),
       inset 0 -12px 16px -14px rgba(0, 0, 0, 0.7), inset 0 14px 18px -16px rgba(255, 255, 255, 0.12);
-    transition: transform 160ms var(--ease-out), background-color 160ms ease;
+    transition: transform 160ms var(--ease-out), background-color 160ms ease, --even 240ms var(--ease-out);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .glass:hover, .dock:has(.mode:hover) #thumb, .dock:has(.action:hover) .dkey { --even: 0.14; }
   }
   .glass::before {
     content: ''; position: absolute; inset: 0; z-index: 1; border-radius: inherit; padding: var(--rim-w, 1px); pointer-events: none;
@@ -211,11 +214,11 @@
    of the scene's light, feathered past each box. The instruments' shade
    comes with the camera into the run and goes with it. */
 .dim { position: absolute; z-index: -1; background: var(--color-ground); opacity: 0.86; filter: blur(9.6px); }
-:is(#dimA, #dimB, #dimC) { opacity: 0; }
-[data-screen='run'] :is(#dimA, #dimB, #dimC) { opacity: 0.86; transition: opacity 1400ms var(--ease-in-out) 100ms; }
-[data-screen='exit'] :is(#dimA, #dimB, #dimC) { transition: opacity calc(600ms / var(--pace)) var(--ease-in-out); }
-[data-reopened] :is(#dimA, #dimB, #dimC) { transition: opacity 340ms var(--ease-sine); }
-[data-back] :is(#dimA, #dimB, #dimC) { opacity: 0; transition: opacity 320ms var(--ease-sine); }
+.dim-run { opacity: 0; }
+[data-screen='run'] .dim-run { opacity: 0.86; transition: opacity 1400ms var(--ease-in-out) 100ms; }
+[data-screen='exit'] .dim-run { transition: opacity calc(600ms / var(--pace)) var(--ease-in-out); }
+[data-reopened] .dim-run { transition: opacity 340ms var(--ease-sine); }
+[data-back] .dim-run { opacity: 0; transition: opacity 320ms var(--ease-sine); }
 /* History holds back the whole scene, and lets a reopened run's through. */
 #histDim { opacity: 0; transition: opacity 260ms var(--ease-out); }
 [data-open] #histDim { opacity: 0.7; transition: opacity 300ms var(--ease-out); }
@@ -251,17 +254,29 @@
 [data-formed] :is(#result, #pool) { opacity: 1; }
 /* The pool widens for the two-line result as the number glides onto it. */
 [data-formed] #pool { scale: 1.19; }
-[data-landed] #live { visibility: hidden; }
 [data-screen='exit'] :is(#live, #pool, #result) {
   opacity: 0;
   scale: calc(1 - 0.04 * var(--move));
   transition: opacity calc(200ms / var(--pace)) var(--ease-out), scale calc(200ms / var(--pace)) var(--ease-out);
 }
-/* The result: download rises in over the number come to rest, which is upload. */
+/* The result: the live number comes to rest as its upload line, gliding down
+   and shrinking at the calm pace of the hand-offs between phases, its unit
+   fading on the way as the result's own opens out beside it, while download
+   rises in above. Everything in the eye is sized in --s, so where each line
+   comes to rest is a fixed share of it, and the unit beside the number takes
+   no room: the pair is centred by moving the number half the unit's width
+   (--unit-w, at the number's resting scale) in the same transform, so the
+   whole glide is one smooth move. */
+#lvPhase, #lvNum, #lvUnit { transition: transform 1400ms var(--ease-sine), opacity 560ms linear; }
+[data-formed] #lvPhase { transform: translateY(calc(var(--s) * 0.3195)); }
+[data-formed] #lvNum { transform: translate(calc(var(--unit-w) * -0.38635), calc(var(--s) * 0.2743)) scale(0.7727); }
+[data-formed] #lvUnit { transform: translate(calc(var(--unit-w) * -0.38635), calc(var(--s) * 0.2743)); opacity: 0; }
+/* The result's unit, sized and spaced so it reads at its own size beside the shrunken number. */
+#resUnit { opacity: 0; transition: opacity 740ms var(--ease-out) 660ms; }
+#resUnit > span { padding-left: calc(var(--s) * 0.0324); font-size: calc(var(--s) * 0.1229); }
+[data-formed] #resUnit { opacity: 1; }
 #resD { opacity: 0; translate: 0 calc(var(--s) * -0.05 * var(--move)); }
 [data-formed] #resD { opacity: 1; translate: 0 0; transition: opacity 1200ms var(--ease-out-soft) 500ms, translate 1200ms var(--ease-out-soft) 500ms; }
-:is(#res-label, #res-num) { opacity: 0; }
-[data-landed] :is(#res-label, #res-num) { opacity: 1; }
 
 /* The instruments rise in one after another as the disc goes, and drop away
    on the way home. */
@@ -290,14 +305,18 @@
    go together, quickly. */
 @keyframes enter { from { opacity: 0; scale: 0.96; } }
 @keyframes rise { from { opacity: 0; translate: 0 calc(10px * var(--move) + var(--where-dy, 0px)); } }
-[data-reopened] :is(#result, #pool) { animation: enter 220ms var(--ease-out) 60ms backwards; }
-[data-reopened] :is(#resD, figcaption) { transition: none; }
+[data-reopened] :is(#result, #pool, #live) { animation: enter 220ms var(--ease-out) 60ms backwards; }
+[data-reopened] :is(#resD, figcaption, #lvPhase, #lvNum, #lvUnit, #resUnit) { transition: none; }
 [data-reopened] :is(#chartD, #chartU) { translate: 0 var(--where-dy, 0px); animation: rise 220ms var(--ease-out) calc(80ms + var(--d, 0ms)) backwards; transition: none; }
 [data-reopened] #stats { opacity: 0; visibility: hidden; transition: none; }
-#where { visibility: hidden; }
+/* A reopened run's details take the stats row's band: across the top bar's
+   width on a wide screen, from the stats row down; across the charts' on a
+   phone, up from the bottom key's foot. */
+#where { visibility: hidden; left: var(--band-x); width: var(--band-w); top: var(--stats-top); }
+@media not ((min-width: 900px) and (min-height: 560px)) { #where { top: var(--dock-bottom); transform: translateY(-100%); } }
 [data-reopened] #where { visibility: visible; animation: where-in 220ms var(--ease-out) 120ms backwards; }
 @keyframes where-in { from { opacity: 0; translate: 0 calc(8px * var(--move)); } }
-[data-back] :is(#result, #pool, #chartD, #chartU) { opacity: 0; transition: opacity 150ms var(--ease-out); }
+[data-back] :is(#result, #pool, #live, #chartD, #chartU) { opacity: 0; transition: opacity 150ms var(--ease-out); }
 
 /* The bottom key. At Start the key comes up under the thumb at its size, the
    thumb fades off the top of it, and it opens out to the whole slot as its

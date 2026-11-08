@@ -94,6 +94,17 @@ export interface SceneFrame {
   hand: Hand;
 }
 
+/** The swarm's size S, and where it sits idle and during a run, from where the page leaves room for it: the stage band, and the bottom key's top. */
+export function cameras(W: number, stage: DOMRect, dockTop: number, wide: boolean): { S: number; run: Cam; idle: Cam } {
+  const REACH = 1.88; // the swarm reaches about 0.94 S from its centre
+  const S = Math.max(60, Math.min(wide ? stage.width : W - 28, stage.height) / REACH);
+  // Idle has only Start inside the swarm, so the swarm grows into the empty
+  // band between the top bar and the mode choice, centred in it.
+  const bottom = dockTop - 12;
+  const zoom = Math.min(Math.max(Math.min(wide ? W : W * 1.1, bottom - stage.top) / REACH / S, 1), 1.22);
+  return { S, run: { zoom: 1, cx: W / 2, cy: stage.top + stage.height / 2 }, idle: { zoom, cx: W / 2, cy: (stage.top + bottom) / 2 } };
+}
+
 /** How far the camera has come from the idle layout to the run's, t into a run. */
 export const runCam = (t: number) => EASE_IN_OUT(span(t, 0.1, 1.5));
 
@@ -157,13 +168,37 @@ export class Scene {
   private DR = pose();
   private swp = { x: 0, y: 0 };
 
+  /** The scene, or null where WebGL is missing or fails to start: the page runs without it either way. */
   static create(canvas: HTMLCanvasElement, seed: number): Scene | null {
-    const r = Renderer.create(canvas, 720 + 560 + 8 + DRIFT_MAX + 8);
-    return r ? new Scene(r, seed) : null;
+    const r = Scene.renderer(canvas);
+    return r ? new Scene(r, seed, canvas) : null;
   }
 
-  private constructor(r: Renderer, seed: number) {
+  private static renderer(canvas: HTMLCanvasElement): Renderer | null {
+    try {
+      return Renderer.create(canvas, 720 + 560 + 8 + DRIFT_MAX + 8);
+    } catch {
+      return null;
+    }
+  }
+
+  /** The renderer is gone until the browser gives the context back (a phone under memory pressure drops it). */
+  private lost = false;
+  private size: [number, number, number, number] = [0, 0, 1, 200];
+
+  private constructor(r: Renderer, seed: number, canvas: HTMLCanvasElement) {
     this.r = r;
+    canvas.addEventListener('webglcontextlost', (ev) => {
+      ev.preventDefault();
+      this.lost = true;
+    });
+    canvas.addEventListener('webglcontextrestored', () => {
+      const back = Scene.renderer(canvas);
+      if (!back) return;
+      this.r = back;
+      this.lost = false;
+      this.layout(...this.size, this.cam);
+    });
     this.seed = seed;
     // The load's seed salts every drift flight, so each visit throws its own.
     this.salt = Math.imul(seed, 104729) | 0;
@@ -186,6 +221,7 @@ export class Scene {
   }
 
   layout(W: number, H: number, dpr: number, S: number, cam: { run: Cam; idle: Cam }): void {
+    this.size = [W, H, dpr, S];
     this.W = W;
     this.H = H;
     env.S = S;
@@ -193,7 +229,9 @@ export class Scene {
     this.cam = cam;
     this.far = Math.hypot(Math.max(cam.run.cx, W - cam.run.cx), Math.max(cam.run.cy, H - cam.run.cy));
     this.farIdle = Math.hypot(Math.max(cam.idle.cx, W - cam.idle.cx), Math.max(cam.idle.cy, H - cam.idle.cy));
-    this.r.resize(W, H, dpr);
+    // Drawn at no more than 1.5 device pixels per CSS pixel: it is a soft,
+    // moving background, and the page's text stays at the screen's own.
+    if (!this.lost) this.r.resize(W, H, Math.min(dpr, 1.5));
     this.D.prepareSettle();
     this.U.prepareSettle();
   }
@@ -620,6 +658,7 @@ export class Scene {
 
   /** One frame. The camera (zoom and centre) is what moves the swarm between the idle and run layouts. */
   frame(v: SceneFrame): void {
+    if (this.lost) return;
     const r = this.r;
     const S = env.S;
     const { W, H } = this;

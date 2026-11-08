@@ -184,8 +184,12 @@ export class RunData {
     (d ? this.U : this.D).end(t);
   }
 
-  fail(t: number): void {
+  /** Why the run failed, in a sentence for the page. */
+  reason = '';
+
+  fail(t: number, reason: string): void {
     this.failedAt = t;
+    this.reason = reason;
     this.addEvent({ t, at: t, dur: ROLL_PHASE, phase: true, land: false });
   }
 

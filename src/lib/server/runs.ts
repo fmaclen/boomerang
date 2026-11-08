@@ -20,6 +20,8 @@ function store(): Database {
   if (!db) {
     db = new Database(process.env.RUNS_DB ?? 'runs.sqlite', { create: true });
     db.run('CREATE TABLE IF NOT EXISTS runs (id TEXT PRIMARY KEY, startedAt REAL NOT NULL, run TEXT NOT NULL)');
+    // So a page of History reads ten rows, not every stored run.
+    db.run('CREATE INDEX IF NOT EXISTS runs_startedAt ON runs (startedAt)');
   }
   return db;
 }
@@ -36,7 +38,7 @@ const handlers = {
       .query<{ run: string }, [number, number]>(
         "SELECT json_remove(run, '$.download.samples', '$.upload.samples') AS run FROM runs ORDER BY startedAt DESC LIMIT ? OFFSET ?",
       )
-      .all(PAGE + 1, Math.max(0, Math.floor(from) || 0));
+      .all(PAGE + 1, Math.min(2 ** 31, Math.max(0, Math.floor(from) || 0)));
     const more = rows.length > PAGE;
     // The rows are already JSON; join them rather than parse and re-encode.
     const body = `{"runs":[${rows.slice(0, PAGE).map((row) => row.run).join(',')}],"more":${more}}`;
@@ -50,9 +52,10 @@ const handlers = {
   },
 
   async save(request: Request): Promise<Response> {
-    if (Number(request.headers.get('content-length')) > BODY_LIMIT) return new Response(null, { status: 413 });
-    const text = await request.text();
-    if (text.length > BODY_LIMIT) return new Response(null, { status: 413 });
+    // JSON only, so no page elsewhere can post a run without the box's say-so (see vite.config.ts).
+    if (!request.headers.get('content-type')?.startsWith('application/json')) return new Response(null, { status: 415 });
+    const text = await bounded(request);
+    if (text === null) return new Response(null, { status: 413 });
     let body: unknown;
     try {
       body = JSON.parse(text);
@@ -70,3 +73,22 @@ const handlers = {
     return new Response(null, { status: 204, headers });
   },
 };
+
+/** The body as text, read only as far as BODY_LIMIT bytes; null, and the rest left unread, past it. */
+async function bounded(request: Request): Promise<string | null> {
+  if (Number(request.headers.get('content-length')) > BODY_LIMIT) return null;
+  const reader = request.body?.getReader();
+  const parts: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const part = await reader?.read();
+    if (!part || part.done) break;
+    size += part.value.byteLength;
+    if (size > BODY_LIMIT) {
+      await reader!.cancel();
+      return null;
+    }
+    parts.push(part.value);
+  }
+  return Buffer.concat(parts).toString('utf8');
+}

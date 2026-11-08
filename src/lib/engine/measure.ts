@@ -21,6 +21,14 @@ const ADAPTIVE_FLOOR_S = 3;
 const ADAPTIVE_CAP_S = 5;
 const ADAPTIVE_STABLE_RATIO = 0.05;
 const FIXED_S = 30;
+/** A transfer that moves no byte for this long has lost the box. */
+const STALL_S = 4;
+
+/** What a run that loses the box says, plainly: the network went, the box went away, or a transfer stalled. */
+export const UNREACHABLE = "The box couldn't be reached";
+/** A failure in the box's own words when it answered, and the plain one when it didn't. */
+const plainly = (error: unknown) => (error instanceof Error && error.message.startsWith('The box') ? error : new Error(UNREACHABLE));
+const refused = (status: number) => new Error(`The box answered ${status}`);
 
 /** The shortest each direction runs: an adaptive run's floor, a fixed run's length. */
 export const MIN_PHASE_SECONDS: Record<Mode, number> = { adaptive: ADAPTIVE_FLOOR_S, fixed: FIXED_S };
@@ -80,15 +88,24 @@ async function idleLatency(
   while (times.length < IDLE_PROBES) {
     const left = (times.length ? IDLE_PROBE_BUDGET_MS : FIRST_PROBE_MS) - (performance.now() - start);
     if (left <= 0) break;
+    // The run's signal and the probe's deadline in one, by hand: AbortSignal.any
+    // is too new for the iPhones a box is likely tested from.
+    const probe = new AbortController();
+    const end = () => probe.abort(signal.reason);
+    const timer = setTimeout(() => probe.abort(new DOMException('ping timed out', 'TimeoutError')), left);
+    signal.addEventListener('abort', end, { once: true });
     try {
-      times.push(await network.ping(AbortSignal.any([signal, AbortSignal.timeout(left)])));
+      times.push(await network.ping(probe.signal));
     } catch (error) {
       if (signal.aborted || !(error instanceof DOMException && error.name === 'TimeoutError')) throw error;
       break;
+    } finally {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', end);
     }
     onProbe([...times]);
   }
-  if (!times.length) throw new Error('the box did not answer ping');
+  if (!times.length) throw new Error(UNREACHABLE);
   return { idleMs: median(times), jitterMs: meanAbsoluteStep(times) };
 }
 
@@ -97,8 +114,11 @@ const box: Network = { ping, download: downloadStreams, upload: uploadStreams };
 
 async function ping(signal: AbortSignal): Promise<number> {
   const started = performance.now();
-  const response = await fetch(endpoint('/ping'), { cache: 'no-store', signal });
-  if (!response.ok) throw new Error(`ping answered ${response.status}`);
+  const response = await fetch(endpoint('/ping'), { cache: 'no-store', signal }).catch((error: unknown) => {
+    // The probe's own deadline passes through as itself; anything else is a lost box.
+    throw signal.aborted ? (signal.reason ?? error) : new Error(UNREACHABLE);
+  });
+  if (!response.ok) throw refused(response.status);
   return performance.now() - started;
 }
 
@@ -146,9 +166,12 @@ function transferPhase(
     };
 
     if (signal.aborted) return finish();
+    // When bytes last moved, so a stalled transfer fails rather than waits forever.
+    let moved = 0;
     streams(
       (count) => {
         bytes += count;
+        if (count > 0) moved = (performance.now() - start) / 1000;
       },
       (error) => finish(error ?? new Error(`${kind} failed`)),
       phase.signal,
@@ -157,6 +180,7 @@ function transferPhase(
     timer = setInterval(() => {
       if (signal.aborted) return finish();
       const elapsed = (performance.now() - start) / 1000;
+      if (elapsed - moved > STALL_S) return finish(new Error(UNREACHABLE));
 
       recent.push({ t: elapsed, bytes });
       while (recent.length > 1 && elapsed - recent[1].t >= 1) recent.shift();
@@ -204,7 +228,7 @@ function downloadStreams(onBytes: OnBytes, fail: Fail, signal: AbortSignal): voi
   staggered(
     () =>
       downloadStream(onBytes, signal).catch((error) => {
-        if (!signal.aborted) fail(error);
+        if (!signal.aborted) fail(plainly(error));
       }),
     signal,
   );
@@ -214,7 +238,7 @@ function downloadStreams(onBytes: OnBytes, fail: Fail, signal: AbortSignal): voi
 async function downloadStream(onBytes: OnBytes, signal: AbortSignal): Promise<void> {
   while (!signal.aborted) {
     const response = await fetch(endpoint('/downloading'), { cache: 'no-store', signal });
-    if (!response.ok || !response.body) throw new Error(`download answered ${response.status}`);
+    if (!response.ok || !response.body) throw refused(response.status);
     const reader = response.body.getReader();
     for (;;) {
       const { done, value } = await reader.read();
@@ -248,8 +272,8 @@ function uploadStream(blob: Blob, onBytes: OnBytes, fail: Fail, signal: AbortSig
     xhr.onloadend = () => {
       signal.removeEventListener('abort', abort);
       if (signal.aborted) return;
-      if (xhr.status >= 300) return fail(new Error(`upload answered ${xhr.status}`));
-      if (xhr.status === 0 && sent === 0) return fail(new Error('upload failed'));
+      if (xhr.status >= 300) return fail(refused(xhr.status));
+      if (xhr.status === 0 && sent === 0) return fail(new Error(UNREACHABLE));
       post();
     };
     signal.addEventListener('abort', abort, { once: true });

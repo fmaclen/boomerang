@@ -122,15 +122,19 @@ test('History lists ten runs at a time down a page that scrolls, opens one at it
   expect((await (await request.get('/runs')).json()).runs).toEqual([]);
 });
 
-test('the result shows as soon as the run is measured, however long the box takes to save it', async ({ page }) => {
-  await page.route('**/runs', (route) => (route.request().method() === 'POST' ? new Promise(() => {}) : route.fallback()));
+test('the result shows at once however long the box takes to save it; New test still goes home, and a store that is down still lists the run', async ({
+  page,
+}) => {
+  await page.route('**/runs**', (route) => (route.request().method() === 'POST' ? new Promise(() => {}) : route.fulfill({ status: 500 })));
   await page.goto('/');
   await page.getByTestId('start').click();
   await expect(page.getByTestId('result')).toBeVisible({ timeout: 30_000 });
-  // Unsaved, it keeps home's address; it is listed all the same, and History opens straight over it.
+  // Unsaved, it keeps home's address, and New test still takes it home.
   await expect(page).toHaveURL('/');
+  await page.getByTestId('new-run').click();
+  await expect(page.getByTestId('start')).toBeEnabled();
   await page.getByTestId('history-toggle').click();
-  await expect(page.getByTestId('history-toggle')).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByTestId('history-failed')).toBeVisible();
   await expect(page.getByTestId('history-item')).toHaveCount(1);
 });
 
@@ -196,4 +200,114 @@ test('text is text: a click on it lands on it and selects it, never the scene', 
   expect(await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest('dd')?.textContent, [x, y])).toContain('Quick');
   await page.mouse.click(x, y, { clickCount: 3 });
   expect(await page.evaluate(() => getSelection()?.toString())).toContain('Quick');
+});
+
+/** Every request to the box's own endpoints fails, as when the network drops. */
+const lose = (page: Page) => page.route(/\/(ping|downloading|upload)\b/, (route) => route.abort('internetdisconnected'));
+const regain = (page: Page) => page.unroute(/\/(ping|downloading|upload)\b/);
+
+test('a box lost before Start fails the run within seconds, says so, and Try again works once it is back', async ({ page }) => {
+  await page.goto('/');
+  await lose(page);
+  await page.getByTestId('start').click();
+  await expect(page.getByTestId('run-failed')).toContainText("couldn't be reached", { timeout: 8_000 });
+  await regain(page);
+  await page.getByTestId('new-run').click();
+  await expect(page.getByTestId('result')).toBeVisible({ timeout: 30_000 });
+});
+
+test('a box lost mid-download fails the run within seconds, says so, and Try again works once it is back', async ({ page }) => {
+  await page.goto('/');
+  await page.getByTestId('start').click();
+  await expect(page.locator('[data-phase="download"]')).toBeAttached({ timeout: 15_000 });
+  await lose(page);
+  await expect(page.getByTestId('run-failed')).toContainText("couldn't be reached", { timeout: 10_000 });
+  await regain(page);
+  await page.getByTestId('new-run').click();
+  await expect(page.getByTestId('result')).toBeVisible({ timeout: 30_000 });
+});
+
+test('runs cleared from another browser leave this one too', async ({ page, request }) => {
+  await seed(request, 3);
+  await page.goto('/history');
+  await expect(page.getByTestId('history-item')).toHaveCount(3);
+  await page.getByTestId('history-toggle').click();
+  await expect(page.getByTestId('start')).toBeEnabled();
+  await request.delete('/runs', { headers: { 'Content-Type': 'application/json' } });
+  await page.getByTestId('history-toggle').click();
+  await expect(page.getByText('No tests yet')).toBeVisible();
+});
+
+test('a list already on its way when History is cleared does not bring the runs back', async ({ page, request }) => {
+  await seed(request, 2);
+  await page.goto('/history');
+  await expect(page.getByTestId('history-item')).toHaveCount(2);
+  await page.getByTestId('history-toggle').click();
+  await expect(page.getByTestId('start')).toBeEnabled();
+  let release = () => {};
+  await page.route(
+    (url) => url.pathname === '/runs' && url.searchParams.has('from'),
+    async (route) => {
+      const response = await route.fetch();
+      await new Promise<void>((r) => (release = r));
+      await route.fulfill({ response, body: JSON.stringify({ runs: [run(0), run(1)], more: false }) });
+    },
+  );
+  await page.getByTestId('history-toggle').click();
+  await page.getByTestId('history-clear').click();
+  await page.getByTestId('history-clear-confirm').click();
+  await expect(page.getByText('No tests yet')).toBeVisible();
+  release();
+  await page.waitForTimeout(500);
+  await expect(page.getByTestId('history-item')).toHaveCount(0);
+});
+
+test("a run History doesn't have never shows the last run's figures", async ({ page, request }) => {
+  await seed(request, 2);
+  await page.goto('/history/run-1');
+  await expect(page.getByTestId('result-download')).toContainText('101');
+  await page.evaluate(() => {
+    const a = Object.assign(document.createElement('a'), { href: '/history/nope' });
+    document.body.append(a);
+    a.click();
+  });
+  await expect(page.getByTestId('history-missing')).toBeVisible();
+  await expect(page.getByTestId('result')).toHaveCount(0);
+  await expect(page.getByTestId('history-details')).not.toContainText('Quick');
+});
+
+test('a run whose id is full of URL punctuation lists, opens and comes back', async ({ page, request }) => {
+  const ids = ['/bad', 'a/b', 'a?b', 'a#b', '%'];
+  for (const [i, id] of ids.entries()) expect((await request.post('/runs', { data: { ...run(i), id } })).status()).toBe(201);
+  await page.goto('/history');
+  await expect(page.getByTestId('history-item')).toHaveCount(ids.length);
+  for (const id of ids) {
+    await page.locator(`[data-testid="history-item"][data-id="${id.replace(/"/g, '\\"')}"] a`).click();
+    await expect(page.getByTestId('history-details')).toBeVisible();
+    await page.reload();
+    await expect(page.getByTestId('history-details')).toBeVisible();
+    await page.goBack();
+    await expect(page.getByTestId('history-item')).toHaveCount(ids.length);
+  }
+});
+
+test('fast Back and Forward leave no errors behind', async ({ page, request }) => {
+  await seed(request, 2);
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/');
+  await page.getByTestId('history-toggle').click();
+  await page.getByTestId('history-item').first().getByRole('link').click();
+  await expect(page.getByTestId('history-details')).toBeVisible();
+  await page.evaluate(() => {
+    for (let i = 0; i < 3; i++) {
+      history.back();
+      history.forward();
+      history.back();
+    }
+  });
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(800);
+  expect(errors).toEqual([]);
 });
