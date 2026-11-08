@@ -58,8 +58,3 @@ jobs:
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.version=${{ steps.release.outputs.version }}
-
-  # The public demo (`bun run build:site`, static files in build-site/) deploys
-  # to Cloudflare Pages; that deploy is owned by issue #7.
-  # Add a `landing` job here, gated on the same
-  # `github.event.workflow_run.conclusion == 'success'` condition as `docker`.

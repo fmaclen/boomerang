@@ -16,13 +16,16 @@ function port(env: Record<string, string>, name: string): number {
 // - the default is the box: the page and the endpoints it measures against,
 //   one server in build/, run with Bun (`bun run start`);
 // - `demo` is the public site, the same app reading a simulated link, as
-//   static files in build-site/ for Cloudflare Pages (`bun run build:site`).
+//   static files for Cloudflare Pages. Cloudflare's build sets CF_PAGES, which
+//   picks it, and reads its SvelteKit preset's folder, .svelte-kit/cloudflare.
+//   The browser tests build it beside the box, in a folder of its own.
 function kit(mode: string) {
+  const outDir = process.env.CF_PAGES ? '.svelte-kit' : '.svelte-kit-demo';
   if (mode === 'demo')
     return {
       // The box's endpoints are left out: the demo never calls them.
-      adapter: adapterStatic({ pages: 'build-site', strict: false }),
-      outDir: '.svelte-kit-demo',
+      adapter: adapterStatic({ pages: `${outDir}/cloudflare`, strict: false }),
+      outDir,
       files: { appTemplate: 'src/demo.html' },
       // Served from BASE_PATH (the site's root by default). Paths are absolute,
       // since a static host answers every run's address with the same shell.
@@ -42,7 +45,8 @@ function kit(mode: string) {
   };
 }
 
-export default defineConfig(({ command, mode }) => {
+export default defineConfig(({ command, mode: asked }) => {
+  const mode = process.env.CF_PAGES ? 'demo' : asked;
   const env = loadEnv(mode, process.cwd(), '');
   // SvelteKit's prerender step loads this config again in another process,
   // which learns the mode only from MODE.
@@ -50,6 +54,7 @@ export default defineConfig(({ command, mode }) => {
   // A build needs no ports, so the Docker image builds without an .env.
   const serving = command === 'serve' || process.argv.includes('preview');
   return {
+    mode,
     plugins: [tailwindcss(), sveltekit(kit(mode))],
     server: { host: '127.0.0.1', port: serving ? port(env, 'PORT') : undefined, strictPort: true, allowedHosts: ['.ts.net'] },
     preview: { host: '127.0.0.1', port: serving ? port(env, 'PREVIEW_PORT') : undefined, strictPort: true, allowedHosts: ['.ts.net'] },

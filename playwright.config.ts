@@ -3,9 +3,9 @@ import { defineConfig, devices } from '@playwright/test';
 
 // Ports come from .env (see scripts/worktree-setup.py). The suite builds the
 // box and runs it as it ships (`bun build/index.js`, its runs in a throwaway
-// database), and builds the demo and serves it as static files. WebGL is off:
-// the tests check behaviour, and the page runs without its scene. Screenshots
-// and clips for the README come from `bun run shots`, with the scene on.
+// database), and builds the demo and previews it. WebGL is off: the tests
+// check behaviour, and the page runs without its scene. Screenshots and clips
+// for the README come from `bun run shots`, with the scene on.
 function env(name: string): string {
   const line = readFileSync('.env', 'utf8')
     .split('\n')
@@ -40,6 +40,6 @@ export default defineConfig({
   ],
   webServer: [
     { command: 'bun run build && bun tests/boxes.ts', env: { PREVIEW_PORT: PORT, BROWSER_PORT }, url: `${box}/ping`, timeout: 120_000 },
-    { command: 'bun run build:site && bun tests/serve-site.ts', env: { SITE_PORT, BASE_PATH: '/demo' }, url: site, timeout: 120_000 },
+    { command: `bun run build --mode demo && bun run preview --mode demo --port ${SITE_PORT}`, env: { BASE_PATH: '/demo' }, url: site, timeout: 120_000 },
   ],
 });
