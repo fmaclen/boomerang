@@ -39,7 +39,8 @@
   const TRIM = '[text-box:trim-both_cap_alphabetic]';
 </script>
 
-<header class="flex h-(--bar) items-center border-b border-ink/8 bg-ground">
+<!-- Over the app's layer, whose full-screen History dim would otherwise take the keys' clicks. -->
+<header class="relative z-1 flex h-(--bar) items-center border-b border-ink/8 bg-ground">
   <div class="relative mx-auto flex w-(--col) items-center justify-between wide:w-full wide:px-(--px)">
     <a class="{KEY} {running ? KEYS_GO : KEYS_COME}" href={GUIDE} aria-label="Self-host with Docker">
       <svg class="size-4 flex-none drop-shadow-[0_1px_1px_rgba(0,0,0,0.7)]" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"

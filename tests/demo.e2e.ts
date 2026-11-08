@@ -24,6 +24,16 @@ test('a demo run reads a simulated gigabit link and asks nothing of a box', asyn
   expect(asked.filter((path) => /^\/(ping|downloading|upload|runs)\b/.test(path))).toEqual([]);
 });
 
+test("the demo bar's Self-host and Releases keys open their pages on GitHub", async ({ page }) => {
+  await page.route('https://github.com/**', (route) => route.fulfill({ body: 'GitHub' }));
+  await page.goto('./');
+  await page.getByRole('link', { name: 'Self-host with Docker' }).click();
+  await expect(page).toHaveURL('https://github.com/fmaclen/boomerang/blob/master/docs/self-hosting.md');
+  await page.goBack();
+  await page.getByTestId('release').click();
+  await expect(page).toHaveURL(/^https:\/\/github\.com\/fmaclen\/boomerang\/releases/);
+});
+
 test("the demo's History key leads to a page the site has", async ({ page, request }) => {
   await page.goto('./');
   const href = await page.getByTestId('history-toggle').getAttribute('href');
