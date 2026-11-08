@@ -12,15 +12,15 @@ Wi-Fi, your LAN or your tailnet, not your internet connection.
 <table>
   <tr>
     <td width="50%"><img src="screenshots/idle-desktop.png" alt="The start screen: a green Start button over a swarm of boomerangs, with Quick and Long below it"></td>
-    <td width="50%"><img src="screenshots/download-desktop.png" alt="A run in progress, reading 50.0 Mbps down with the download chart filling in"></td>
+    <td width="50%"><img src="screenshots/download-desktop.png" alt="A run in progress, reading about 50 Mbps down with the download chart filling in"></td>
   </tr>
   <tr>
     <td align="center">Start</td>
     <td align="center">A run</td>
   </tr>
   <tr>
-    <td width="50%"><img src="screenshots/adaptive-result-desktop.png" alt="A result: 49.9 Mbps down, 9.91 Mbps up, with ping, jitter and data used"></td>
-    <td width="50%"><img src="screenshots/history-desktop.png" alt="History: three past runs with their speeds, ping, mode and device"></td>
+    <td width="50%"><img src="screenshots/adaptive-result-desktop.png" alt="A result: about 50 Mbps down and 10 Mbps up, with ping, jitter and data used"></td>
+    <td width="50%"><img src="screenshots/history-desktop.png" alt="History: four runs with their speeds, ping, mode and device"></td>
   </tr>
   <tr>
     <td align="center">A result</td>
@@ -45,15 +45,14 @@ Wi-Fi, your LAN or your tailnet, not your internet connection.
 
 ## Features
 
-- **Download, upload, ping and jitter.** Ping is also probed during both
-  transfers, so each run records latency under load as well.
+- **Download, upload, ping and jitter.**
 - **Quick and Long runs.** Quick stops each direction once the rate settles,
   three to five seconds each way. Long runs thirty seconds each way.
 - **History on the box.** Every run is saved on the server with its time,
   mode, results and device, so every browser that opens the box sees the same
   list. One setting keeps runs in each browser instead.
-- **One small container.** One image holds the page, the test endpoints and
-  the store for past runs.
+- **One small container.** One Bun process serves the page, the endpoints it
+  measures against and the store for past runs.
 - **No third-party requests.** The page loads nothing from another origin: no
   font service, no CDN, no analytics. The test suite fails on the first request
   that leaves the box.

@@ -2,9 +2,10 @@
 
 T3 Code runs this after creating a worktree (see t3.json) with
 T3CODE_WORKTREE_PATH set. It gives the checkout its own port slot, written to
-.env (dev, preview, and the landing page's site), installs dependencies, and fetches the Chromium and WebKit the suite runs
-in. Rerunning is safe: an existing .env keeps its slot. Python rather than bash
-so it runs on Windows too.
+.env (dev, the boxes the suite runs, and the demo's static site), installs
+dependencies, and fetches the Chromium the suite runs in. Rerunning is safe:
+an existing .env keeps its slot. Python rather than bash so it runs on
+Windows too.
 """
 import os
 import re
@@ -17,6 +18,7 @@ from pathlib import Path
 DEV_BASE = 5900
 PREVIEW_BASE = 6900
 SITE_BASE = 7900
+BROWSER_BASE = 8900
 SLOTS = range(1, 61)
 
 
@@ -53,9 +55,10 @@ def main():
         claimed = claimed_ports(repo)
         for slot in SLOTS:
             dev, preview, site = DEV_BASE + slot, PREVIEW_BASE + slot, SITE_BASE + slot
-            if dev in claimed or listening(dev) or listening(preview) or listening(site):
+            browser = BROWSER_BASE + slot
+            if dev in claimed or any(listening(p) for p in (dev, preview, site, browser)):
                 continue
-            env.write_text(f"PORT={dev}\nPREVIEW_PORT={preview}\nSITE_PORT={site}\n")
+            env.write_text(f"PORT={dev}\nPREVIEW_PORT={preview}\nSITE_PORT={site}\nBROWSER_PORT={browser}\n")
             break
         else:
             print("worktree-setup: no free port slot in 1..60", file=sys.stderr)
@@ -63,16 +66,18 @@ def main():
     ports = dict(
         line.split("=", 1) for line in env.read_text().splitlines() if "=" in line
     )
-    # A slot claimed before the site had a port gets the site's in the same slot.
-    if "SITE_PORT" not in ports:
-        ports["SITE_PORT"] = str(SITE_BASE + int(ports["PORT"]) - DEV_BASE)
-        with env.open("a") as f:
-            f.write(f"SITE_PORT={ports['SITE_PORT']}\n")
+    # A slot claimed before a port was added gets it in the same slot: the
+    # demo's site, and the box that keeps runs in the browser.
+    for name, base in (("SITE_PORT", SITE_BASE), ("BROWSER_PORT", BROWSER_BASE)):
+        if name not in ports:
+            ports[name] = str(base + int(ports["PORT"]) - DEV_BASE)
+            with env.open("a") as f:
+                f.write(f"{name}={ports[name]}\n")
     if (worktree / "package.json").exists():
         bun = shutil.which("bun") or "bun"
         subprocess.run([bun, "install", "--frozen-lockfile"], check=True)
-        subprocess.run([shutil.which("bunx") or "bunx", "playwright", "install", "chromium", "webkit"], check=True)
-    print(f"worktree ready: dev on {ports['PORT']}, preview on {ports['PREVIEW_PORT']}, site on {ports['SITE_PORT']}")
+        subprocess.run([shutil.which("bunx") or "bunx", "playwright", "install", "chromium"], check=True)
+    print(f"worktree ready: dev on {ports['PORT']}, box on {ports['PREVIEW_PORT']}, demo on {ports['SITE_PORT']}")
     return 0
 
 

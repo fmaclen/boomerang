@@ -1,28 +1,23 @@
-// The logo, the tab icon and the home-screen icon. The logo is "boomerang"
-// with its two o's fused, an orange arc over them and a lime arc under, the
-// lower arc the upper one turned half a turn about the point where the o's
-// meet, so it mirrors it exactly. The icons are cut from the "oo". The
-// outlines themselves are in outlines.ts.
+// The logo: "boomerang" in Archivo at weight 900, outlined, with its two o's
+// fused into one shape sharing a stem, an orange arc over them and a lime arc
+// under, the lower arc the upper one turned half a turn about the point where
+// the o's meet, so it mirrors it exactly. In font units, y down, the baseline
+// at 0. The tab and home-screen icons in static/ are cut from the same "oo".
 
-import { ARC, ARC_16, OO } from './outlines';
+/** The whole word. */
+export const WORD =
+  'M408 12Q357 12 313.5 -9Q270 -30 244 -75H237L223 0H61V-725H260V-479H267Q283 -499 305 -512.5Q327 -526 353.5 -533Q380 -540 408 -540Q478 -540 528 -509.5Q578 -479 604.5 -418Q631 -357 631 -265Q631 -172 604.5 -110.5Q578 -49 528 -18.5Q478 12 408 12ZM346 -135Q377 -135 396 -147.5Q415 -160 423.5 -183Q432 -206 432 -237V-290Q432 -321 423.5 -344Q415 -367 396 -380Q377 -393 346 -393Q323 -393 306 -384Q289 -375 278.5 -359.5Q268 -344 263 -323.5Q258 -303 258 -280V-247Q258 -216 267 -190.5Q276 -165 295.5 -150Q315 -135 346 -135ZM928 12Q838 12 771.5 -18.5Q705 -49 668 -110.5Q631 -172 631 -264Q631 -357 668 -418Q705 -479 771.5 -509.5Q838 -540 928 -540Q1018 -540 1085 -509.5Q1152 -479 1189 -418Q1226 -357 1226 -264Q1226 -172 1189 -110.5Q1152 -49 1085 -18.5Q1018 12 928 12ZM928 -123Q963 -123 985 -136.5Q1007 -150 1017 -175Q1027 -200 1027 -235V-292Q1027 -327 1017 -352.5Q1007 -378 985 -391.5Q963 -405 928 -405Q893 -405 871.5 -391.5Q850 -378 840 -352.5Q830 -327 830 -292V-235Q830 -200 840 -175Q850 -150 871.5 -136.5Q893 -123 928 -123ZM1324 12Q1234 12 1167.5 -18.5Q1101 -49 1064 -110.5Q1027 -172 1027 -264Q1027 -357 1064 -418Q1101 -479 1167.5 -509.5Q1234 -540 1324 -540Q1414 -540 1481 -509.5Q1548 -479 1585 -418Q1622 -357 1622 -264Q1622 -172 1585 -110.5Q1548 -49 1481 -18.5Q1414 12 1324 12ZM1324 -123Q1359 -123 1381 -136.5Q1403 -150 1413 -175Q1423 -200 1423 -235V-292Q1423 -327 1413 -352.5Q1403 -378 1381 -391.5Q1359 -405 1324 -405Q1289 -405 1267.5 -391.5Q1246 -378 1236 -352.5Q1226 -327 1226 -292V-235Q1226 -200 1236 -175Q1246 -150 1267.5 -136.5Q1289 -123 1324 -123ZM1622 0V-528H1785L1798 -449H1805Q1824 -479 1852 -499.5Q1880 -520 1913.5 -530Q1947 -540 1982 -540Q2043 -540 2083 -516.5Q2123 -493 2142 -449H2149Q2168 -479 2195.5 -499.5Q2223 -520 2256 -530Q2289 -540 2323 -540Q2384 -540 2424 -516.5Q2464 -493 2483.5 -449Q2503 -405 2503 -342V0H2304V-318Q2304 -335 2300 -348.5Q2296 -362 2288 -372Q2280 -382 2268 -387.5Q2256 -393 2241 -393Q2217 -393 2199 -381.5Q2181 -370 2171.5 -351.5Q2162 -333 2162 -310V0H1963V-318Q1963 -335 1959 -348.5Q1955 -362 1947 -372Q1939 -382 1927 -387.5Q1915 -393 1900 -393Q1876 -393 1858.5 -381.5Q1841 -370 1831 -351.5Q1821 -333 1821 -310V0ZM2812 12Q2717 12 2647.5 -17.5Q2578 -47 2540.5 -108Q2503 -169 2503 -264Q2503 -357 2540 -418Q2577 -479 2643.5 -509.5Q2710 -540 2800 -540Q2895 -540 2961.5 -510.5Q3028 -481 3063 -420Q3098 -359 3098 -264V-230H2702Q2702 -194 2712.5 -168Q2723 -142 2746.5 -128.5Q2770 -115 2808 -115Q2835 -115 2853.5 -121Q2872 -127 2883.5 -137.5Q2895 -148 2900 -162Q2905 -176 2905 -192H3098Q3098 -145 3080 -107Q3062 -69 3026 -42.5Q2990 -16 2936.5 -2Q2883 12 2812 12ZM2703 -324H2897Q2897 -345 2891 -361.5Q2885 -378 2873.5 -389.5Q2862 -401 2845.5 -407Q2829 -413 2808 -413Q2775 -413 2753 -402Q2731 -391 2719 -371.5Q2707 -352 2703 -324ZM3098 0V-528H3261L3274 -448H3281Q3294 -478 3314.5 -499Q3335 -520 3362 -530.5Q3389 -541 3419 -541Q3439 -541 3455 -537Q3471 -533 3478 -529V-362H3414Q3382 -362 3359.5 -353.5Q3337 -345 3323.5 -328.5Q3310 -312 3303.5 -288.5Q3297 -265 3297 -235V0ZM3649 12Q3608 12 3574 4.5Q3540 -3 3515 -20.5Q3490 -38 3476.5 -66.5Q3463 -95 3463 -136Q3463 -195 3487.5 -232Q3512 -269 3559 -289Q3606 -309 3673.5 -316.5Q3741 -324 3828 -324V-350Q3828 -372 3817.5 -385.5Q3807 -399 3790 -406Q3773 -413 3751 -413Q3734 -413 3716 -409Q3698 -405 3686.5 -395Q3675 -385 3675 -367V-363H3479Q3478 -367 3478 -370Q3478 -373 3478 -377Q3478 -426 3509.5 -462.5Q3541 -499 3602.5 -519.5Q3664 -540 3754 -540Q3827 -540 3889 -524Q3951 -508 3989 -470.5Q4027 -433 4027 -368V-162Q4027 -146 4035 -134.5Q4043 -123 4059 -123H4095V-8Q4083 -1 4055.5 5.5Q4028 12 3991 12Q3951 12 3921 4Q3891 -4 3872.5 -19Q3854 -34 3847 -54H3840Q3819 -35 3791.5 -20Q3764 -5 3729 3.5Q3694 12 3649 12ZM3730 -112Q3749 -112 3766.5 -117.5Q3784 -123 3798 -132.5Q3812 -142 3820 -155.5Q3828 -169 3828 -185V-230Q3769 -230 3732.5 -221Q3696 -212 3679 -197Q3662 -182 3662 -162Q3662 -142 3672 -131Q3682 -120 3697.5 -116Q3713 -112 3730 -112ZM4095 0V-528H4258L4271 -448H4278Q4299 -479 4327 -499.5Q4355 -520 4389 -530Q4423 -540 4459 -540Q4522 -540 4562.5 -516.5Q4603 -493 4623 -449Q4643 -405 4643 -342V0H4444V-318Q4444 -335 4439.5 -348.5Q4435 -362 4427 -372Q4419 -382 4406.5 -387.5Q4394 -393 4377 -393Q4352 -393 4333.5 -381.5Q4315 -370 4304.5 -351.5Q4294 -333 4294 -310V0ZM4744 210Q4708 210 4677.5 193Q4647 176 4629 146.5Q4611 117 4611 81Q4611 40 4636.5 9Q4662 -22 4695 -37Q4671 -54 4657 -78Q4643 -102 4643 -130Q4643 -170 4672.5 -201.5Q4702 -233 4744 -243Q4708 -266 4683.5 -298.5Q4659 -331 4659 -369Q4659 -435 4696 -472Q4733 -509 4795 -524.5Q4857 -540 4931 -540Q4961 -540 4981.5 -538.5Q5002 -537 5018 -534Q5062 -561 5079 -587Q5096 -613 5096 -627H5260Q5260 -584 5245.5 -556Q5231 -528 5203.5 -511Q5176 -494 5138 -484Q5167 -462 5183.5 -432.5Q5200 -403 5200 -370Q5200 -311 5169 -273.5Q5138 -236 5087.5 -218Q5037 -200 4978 -200H4902Q4868 -200 4853.5 -192Q4839 -184 4839 -171Q4839 -158 4851.5 -149Q4864 -140 4902 -140H5082Q5174 -140 5217 -92.5Q5260 -45 5260 29Q5260 85 5229 125.5Q5198 166 5147.5 188Q5097 210 5038 210ZM4852 99H5008Q5023 99 5035 93Q5047 87 5054 75.5Q5061 64 5061 49Q5061 26 5045.5 13Q5030 0 5008 0H4852Q4830 0 4815 12.5Q4800 25 4800 48Q4800 71 4815 85Q4830 99 4852 99ZM4929 -304Q4964 -304 4985 -320Q5006 -336 5006 -370Q5006 -404 4985 -420Q4964 -436 4929 -436Q4898 -436 4876 -420Q4854 -404 4854 -370Q4854 -348 4863 -333Q4872 -318 4889 -311Q4906 -304 4929 -304Z';
 
-const GROUND = '#080d0c';
-const INK = '#f1f7eb';
-const LIME = '#a1ff59';
-const ORANGE = '#ff7a30';
-/** The arcs' own hues deepened until they hold 3:1 on Chrome's light tab strip, #dee1e6. */
-const LIME_DEEP = '#3e8f00';
-const ORANGE_DEEP = '#dc4f00';
+/** One arc, a crescent about its own centre, in sixteen curves. */
+export const ARC =
+  'M0 -60C44.4 -60 89.1 -47.9 129.4 -29.6C192.9 -0.8 249 42.5 296.8 93C302.4 98.9 316.5 111.9 319.4 118.8C323.2 127.6 321.8 138.3 315.2 145.5C309.8 151.4 302 154.5 294.1 153.8C287.3 153.2 259.9 139.2 251.8 135.5C223.4 122.5 194.2 110.8 164.9 100C116.3 82 52.1 60 0 60C-52.1 60 -116.3 82 -164.9 100C-194.2 110.8 -223.4 122.5 -251.8 135.5C-259.9 139.2 -287.3 153.2 -294.1 153.8C-302 154.5 -309.8 151.4 -315.2 145.5C-321.8 138.3 -323.2 127.6 -319.4 118.8C-316.5 111.9 -302.4 98.9 -296.8 93C-249 42.5 -192.9 -0.8 -129.4 -29.6C-89.1 -47.9 -44.4 -60 0 -60Z';
 
-/** Where the o's meet, halfway up the x-height, in font units. */
+/** Where the o's meet, halfway up the x-height, and each arc's centre this far above and below it. */
 const MID = { x: 1126.5, y: -264 };
-
-/** Each arc's centre this far above and below the o's middle: on the word, and on the 16 px cut. */
 const REACH = 473;
-const REACH_16 = 532.06;
 
-export const over = (reach = REACH) => `translate(${MID.x} ${MID.y - reach})`;
-export const under = (reach = REACH) => `translate(${MID.x} ${MID.y + reach}) rotate(180)`;
+export const over = `translate(${MID.x} ${MID.y - REACH})`;
+export const under = `translate(${MID.x} ${MID.y + REACH}) rotate(180)`;
 
 /**
  * The word's box, as wide as its ink and as tall as its reach either way from
@@ -33,66 +28,3 @@ export const WORD_BOX = { viewBox: '61 -797 5199 1066', width: 166.73, height: 3
 
 /** How far each arc flies on hover, in font units: 1.05 of its height. */
 export const THROW = 224.58;
-
-/** The scale from font units into the icons' 32-unit square: the 16 px cut, the crop, and the home-screen icon's 0.74 of the crop, clear of iOS's rounded corners. */
-const K_16 = 0.025029;
-const K_32 = 0.028612;
-const K_HOME = +(K_32 * 0.74).toFixed(6);
-
-const inks = (o: string, up: string, down: string) => `.o{fill:${o}}.u{fill:${up}}.d{fill:${down}}`;
-
-/** The oo and its arcs in a 32-unit square, centred on the o's middle. */
-function drawing(k: number, arc: string, reach: number): string {
-  return (
-    `<g transform="translate(16 16) scale(${k}) translate(${-MID.x} ${-MID.y})">` +
-    `<path class="o" d="${OO}"/>` +
-    `<path class="u" transform="${over(reach)}" d="${arc}"/>` +
-    `<path class="d" transform="${under(reach)}" d="${arc}"/></g>`
-  );
-}
-
-/** A tab icon: the page's colours, or, on a light colour scheme, the ground's ink and the deepened arcs. */
-function tabIcon(k: number, arc: string, reach: number): string {
-  const style = inks(INK, ORANGE, LIME) + `@media (prefers-color-scheme:light){${inks(GROUND, ORANGE_DEEP, LIME_DEEP)}}`;
-  return svg(style, drawing(k, arc, reach));
-}
-
-const svg = (style: string, body: string, attrs = '') =>
-  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"${attrs}><style>${style}</style>${body}</svg>`;
-
-const uri = (s: string) => 'data:image/svg+xml,' + encodeURIComponent(s);
-
-/** The tab icon at 16 px, its own cut with heavier arcs that hold at that size. */
-export const TAB_16 = uri(tabIcon(K_16, ARC_16, REACH_16));
-/** The tab icon at 32 px and up, the plain crop from the word. */
-export const TAB_32 = uri(tabIcon(K_32, ARC, REACH));
-/** The home-screen icon's drawing: the crop on the page's ground, filling the square; iOS rounds its corners. */
-export const HOME = uri(svg(inks(INK, ORANGE, LIME), `<rect width="32" height="32" fill="${GROUND}"/>` + drawing(K_HOME, ARC, REACH), ' width="180" height="180"'));
-
-/**
- * Puts the icons in the page's head. The 16 px cut carries no size, so a
- * browser takes it for the tab at any screen density; the crop says 32x32,
- * for places that ask for a larger icon.
- * iOS takes no SVG for the home screen, so the home-screen icon is drawn to a
- * 180 px PNG. All three are data URIs, so they cost no request.
- */
-export function installIcons(): void {
-  const link = (rel: string, href: string, sizes?: string) => {
-    const l = document.createElement('link');
-    l.rel = rel;
-    l.href = href;
-    if (rel === 'icon') l.type = 'image/svg+xml';
-    if (sizes) l.setAttribute('sizes', sizes);
-    document.head.append(l);
-  };
-  link('icon', TAB_16);
-  link('icon', TAB_32, '32x32');
-  const im = new Image();
-  im.onload = () => {
-    const c = document.createElement('canvas');
-    c.width = c.height = 180;
-    c.getContext('2d')?.drawImage(im, 0, 0, 180, 180);
-    link('apple-touch-icon', c.toDataURL('image/png'), '180x180');
-  };
-  im.src = HOME;
-}

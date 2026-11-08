@@ -1,7 +1,7 @@
 // The renderer: three programs over plain WebGL2. Pieces are instanced
 // meshes drawn with 4x multisampling and a depth buffer, streaks lie flat
-// behind them, and the composite lays the result over the ground with the
-// interface's shade, the depth of field and the shockwaves' lens.
+// behind them, and the composite lays the result over the ground through the
+// shockwaves' lens.
 
 import { boomerangMesh } from './mesh';
 import { mod, type RGB } from './math';
@@ -22,30 +22,14 @@ interface Batch {
 interface Target {
   msFb: WebGLFramebuffer;
   color: WebGLRenderbuffer;
-  coc: WebGLRenderbuffer;
   depth: WebGLRenderbuffer;
   tex: WebGLTexture;
   fb: WebGLFramebuffer;
-  cocTex: WebGLTexture;
-  cocFb: WebGLFramebuffer;
   w: number;
   h: number;
 }
 
-/** What the composite needs each frame, in CSS pixels unless named otherwise. */
-export interface Composite {
-  /** Boxes the scene dims behind, in device pixels with y up, and how much each holds back. */
-  boxes: Float32Array;
-  boxK: Float32Array;
-  /** The pool of shade behind the number: centre in device pixels (y up), radius, strength. */
-  eye: [number, number, number, number];
-  /** The most blur for the depth of field, in device pixels; 0 is off. */
-  dofR: number;
-  /** The shockwaves' centre, in device pixels with y up. */
-  waveC: [number, number];
-}
-
-export const WAVE_MAX = 16;
+const WAVE_MAX = 16;
 
 export class Renderer {
   readonly gl: WebGL2RenderingContext;
@@ -63,8 +47,6 @@ export class Renderer {
   readonly waves = new Float32Array(WAVE_MAX * 4);
   readonly waveCol = new Float32Array(WAVE_MAX * 3);
   waveN = 0;
-  /** Whether this frame drew any idle piece, which takes the depth of field. */
-  idleDrawn = false;
   dpr = 1;
 
   static create(canvas: HTMLCanvasElement, maxPieces: number): Renderer | null {
@@ -168,7 +150,6 @@ export class Renderer {
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
   }
 
-  // A second attachment carries each piece's blur for the depth of field.
   private makeTarget(w: number, h: number): Target {
     const gl = this.gl;
     const samples = Math.min(4, gl.getParameter(gl.MAX_SAMPLES) as number);
@@ -179,43 +160,33 @@ export class Renderer {
       return r;
     };
     const color = rb(gl.RGBA8);
-    const coc = rb(gl.RGBA8);
     const depth = rb(gl.DEPTH_COMPONENT24);
     const msFb = gl.createFramebuffer()!;
     gl.bindFramebuffer(gl.FRAMEBUFFER, msFb);
     gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, color);
-    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.RENDERBUFFER, coc);
     gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depth);
     // Linear filtering, so the shockwave's bent lookups stay smooth.
-    const texOf = (): [WebGLTexture, WebGLFramebuffer] => {
-      const tex = gl.createTexture()!;
-      gl.bindTexture(gl.TEXTURE_2D, tex);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-      const fb = gl.createFramebuffer()!;
-      gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
-      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
-      return [tex, fb];
-    };
-    const [tex, fb] = texOf();
-    const [cocTex, cocFb] = texOf();
+    const tex = gl.createTexture()!;
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    const fb = gl.createFramebuffer()!;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    return { msFb, color, coc, depth, tex, fb, cocTex, cocFb, w, h };
+    return { msFb, color, depth, tex, fb, w, h };
   }
 
   private dropTarget(t: Target): void {
     const gl = this.gl;
     gl.deleteFramebuffer(t.msFb);
     gl.deleteRenderbuffer(t.color);
-    gl.deleteRenderbuffer(t.coc);
     gl.deleteRenderbuffer(t.depth);
     gl.deleteTexture(t.tex);
     gl.deleteFramebuffer(t.fb);
-    gl.deleteTexture(t.cocTex);
-    gl.deleteFramebuffer(t.cocFb);
   }
 
   begin(): void {
@@ -223,7 +194,6 @@ export class Renderer {
     this.soft.n = 0;
     this.sparks.n = 0;
     this.waveN = 0;
-    this.idleDrawn = false;
   }
 
   /** One piece. shade darkens it without making it see-through; alpha fades it. push is its eased shove on screen and the turn it adds. */
@@ -254,7 +224,6 @@ export class Renderer {
     d[k + 17] = push[1] + o.sy;
     d[k + 18] = push[2];
     d[k + 19] = 0;
-    if (o.w) this.idleDrawn = true;
     b.n++;
   }
 
@@ -286,16 +255,17 @@ export class Renderer {
     this.waveN++;
   }
 
-  /** Draws the frame: the scene seen from (off, zoom) in a W x H window with the camera at cam, then the composite. hand is the parallax. */
-  draw(W: number, H: number, off: [number, number], zoom: number, cam: number, hand: [number, number], c: Composite): void {
+  /**
+   * Draws the frame: the scene seen from (off, zoom) in a W x H window with
+   * the camera at cam, then the composite. hand is the parallax, and waveC the
+   * shockwaves' centre in device pixels with y up.
+   */
+  draw(W: number, H: number, off: [number, number], zoom: number, cam: number, hand: [number, number], waveC: [number, number]): void {
     const gl = this.gl;
     const t = this.target;
     if (!t) return;
-    const C0 = gl.COLOR_ATTACHMENT0;
-    const C1 = gl.COLOR_ATTACHMENT1;
     gl.bindFramebuffer(gl.FRAMEBUFFER, t.msFb);
     gl.viewport(0, 0, t.w, t.h);
-    gl.drawBuffers([C0, C1]);
     gl.clearColor(0, 0, 0, 0);
     gl.clearDepth(1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -314,14 +284,11 @@ export class Renderer {
     };
     // Streaks lie flat behind everything; the pieces hide one another by
     // depth, solid ones first, then the ones fading in or out over them.
-    // Only the pieces write their blur.
-    gl.drawBuffers([C0, gl.NONE]);
     if (this.sparks.n) {
       gl.bindVertexArray(this.sparks.vao);
       uniforms(this.progSpark);
       gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this.sparks.n);
     }
-    gl.drawBuffers([C0, C1]);
     gl.enable(gl.DEPTH_TEST);
     gl.depthFunc(gl.LESS);
     gl.enable(gl.CULL_FACE);
@@ -340,15 +307,8 @@ export class Renderer {
     gl.disable(gl.DEPTH_TEST);
     gl.disable(gl.BLEND);
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, t.msFb);
-    gl.readBuffer(C0);
     gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, t.fb);
     gl.blitFramebuffer(0, 0, t.w, t.h, 0, 0, t.w, t.h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
-    if (c.dofR > 0) {
-      gl.readBuffer(C1);
-      gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, t.cocFb);
-      gl.blitFramebuffer(0, 0, t.w, t.h, 0, 0, t.w, t.h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
-      gl.readBuffer(C0);
-    }
 
     const p = this.progComp;
     gl.bindVertexArray(this.fullVao);
@@ -358,21 +318,12 @@ export class Renderer {
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, t.tex);
     gl.uniform1i(p.u('u_scene'), 0);
-    gl.uniform4fv(p.u('u_box'), c.boxes);
-    gl.uniform1fv(p.u('u_boxK'), c.boxK);
-    gl.uniform4f(p.u('u_eye'), ...c.eye);
-    gl.uniform1f(p.u('u_feather'), 18 * this.dpr);
-    gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, t.cocTex);
-    gl.uniform1i(p.u('u_coc'), 1);
-    gl.activeTexture(gl.TEXTURE0);
     gl.uniform2f(p.u('u_px'), 1 / t.w, 1 / t.h);
-    gl.uniform1f(p.u('u_dofR'), c.dofR);
     for (let k = 0; k < this.waveN; k++) for (let q = 0; q < 3; q++) this.waves[k * 4 + q] *= this.dpr;
     gl.uniform4fv(p.u('u_wave'), this.waves);
     gl.uniform3fv(p.u('u_waveCol'), this.waveCol);
     gl.uniform1i(p.u('u_waves'), this.waveN);
-    gl.uniform2f(p.u('u_waveC'), ...c.waveC);
+    gl.uniform2f(p.u('u_waveC'), ...waveC);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.bindVertexArray(null);
   }

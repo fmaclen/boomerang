@@ -4,18 +4,19 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "dev": "vite dev",
-    "build": "vite build",
-    "preview": "vite preview",
-    "build:site": "vite build --mode site && vite build --mode demo",
-    "site": "bun run build:site && bun scripts/serve-site.ts",
+    "dev": "bun --bun vite dev",
+    "build": "bun --bun vite build",
+    "start": "BODY_SIZE_LIMIT=64M bun build/index.js",
+    "preview": "bun --bun vite preview",
     "prepare": "svelte-kit sync || echo ''",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-    "test": "playwright test"
+    "test": "playwright test",
+    "shots": "SHOTS=1 playwright test --project=shots"
   },
   "devDependencies": {
     "@playwright/test": "^1.64.1",
     "@semantic-release/git": "^11.0.1",
+    "@sveltejs/adapter-node": "^6.0.1",
     "@sveltejs/adapter-static": "^4.0.1",
     "@sveltejs/kit": "^3.1.1",
     "@sveltejs/vite-plugin-svelte": "^7.3.1",

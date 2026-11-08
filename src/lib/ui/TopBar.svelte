@@ -1,10 +1,13 @@
 <!--
-  The top bar: the GitHub key on the left, the logo in the middle (it goes
-  home), and the History key on the right.
+  The top bar: the GitHub key on the left, the logo in the middle (home),
+  and the History key on the right. It stays at the top as the page scrolls,
+  and takes the page's ground once anything passes under it.
 -->
 <script lang="ts">
   import { resolve } from '$app/paths';
   import Logo from './Logo.svelte';
+  import { again } from './nav';
+  import { is, ui } from './state.svelte';
 
   const KEY = 'glass row-1 grid size-10 place-items-center text-ink-2 fine:hover:text-ink';
   const ICON = 'relative block size-4.5 drop-shadow-[0_1px_1px_rgba(0,0,0,0.7)]';
@@ -17,17 +20,22 @@
   const hover = (e: PointerEvent) => {
     if (e.pointerType !== 'touch' && !still.matches) throwing = true;
   };
+  /** While History can't open (a run, New test's way home) its key is a disabled link: no href, so nothing follows, focuses or opens it. */
+  const off = $derived(!(is.open || is.canOpen));
+  const list = $derived(ui.view === 'list');
+  let scrolled = $state(false);
 </script>
 
-<header class="top grid h-10 w-(--col) flex-none grid-cols-[40px_1fr_40px] items-center wide:w-full wide:[grid-area:top]">
-  <!-- In the landing page's demo the app sits in a frame, and GitHub opens in the page around it. -->
-  <a
-    class="{KEY} col-1"
-    id="gh"
-    href="https://github.com/fmaclen/boomerang"
-    target={import.meta.env.MODE === 'demo' ? '_top' : undefined}
-    aria-label="Boomerang on GitHub"
-  >
+<svelte:window onscroll={() => (scrolled = scrollY > 0)} />
+
+<div
+  class="sticky top-0 z-10 flex h-(--head) justify-center px-8.5 pt-[calc(12px+env(safe-area-inset-top))] transition-[background-color] duration-200 wide:px-(--px) wide:pt-6"
+  class:bg-ground={scrolled}
+>
+<header class="relative grid h-10 w-(--col) flex-none grid-cols-[40px_1fr_40px] items-center wide:w-full" id="top">
+  <div class="dim -inset-2.5"></div>
+  <!-- In the demo, GitHub opens in the page itself. -->
+  <a class="{KEY} col-1" id="gh" href="https://github.com/fmaclen/boomerang" aria-label="Boomerang on GitHub" data-kick="">
     <svg class={ICON} viewBox="0 0 16 16" aria-hidden="true"
       ><path
         fill="currentColor"
@@ -37,24 +45,23 @@
   </a>
   <!-- The logo's box is centred, and its box centres the x-height. It is a
        link home, so the browser's own ways to open it elsewhere work. -->
-  <a
-    class="col-2 row-1 block justify-self-center rounded-lg"
-    id="logo"
-    href={resolve('/')}
-    aria-label="Boomerang"
-    onpointerenter={hover}><Logo {throwing} onlanded={() => (throwing = false)} /></a
+  <a class="col-2 row-1 block justify-self-center rounded-lg" id="logo" href={resolve('/')} aria-label="Boomerang home" onpointerenter={hover} onclick={again}
+    ><Logo {throwing} onlanded={() => (throwing = false)} /></a
   >
   <!-- The History key is a link to /history, like the logo is home. While
-       History is open it is lit a shade brighter, the way New test is, and is
-       the current page. While it can't open (a run, New test's way home) it is
-       a disabled link: no href, so nothing follows, focuses or opens it, and
-       role and aria-disabled so it is still heard as a link, dimmed. -->
+       History is open it is lit a shade brighter, the way New test is; on the
+       list itself it closes it, home. -->
   <a
     class="{KEY} col-3 [transition:transform_160ms_var(--ease-out),background-color_160ms_ease,color_200ms_ease] after:pointer-events-none after:absolute after:inset-0 after:-z-1 after:rounded-[inherit] after:bg-[rgba(241,247,235,0.13)] after:opacity-0 after:[transition:opacity_240ms_var(--ease-out)] after:content-[''] aria-disabled:pointer-events-none aria-disabled:text-ink-3 [&.on]:text-ink [&.on]:after:opacity-100"
+    class:on={is.open}
     id="menu"
-    href="/history"
-    aria-label="History"
+    href={off ? undefined : list ? resolve('/') : resolve('/history')}
+    role={off ? 'link' : undefined}
+    aria-disabled={off ? 'true' : undefined}
+    aria-current={list ? 'page' : undefined}
+    aria-label={list ? 'Close history' : 'History'}
     data-testid="history-toggle"
+    data-kick=""
   >
     <!-- Heroicons' solid clock, its box cropped to the disc, so it is a disc
          the size of the GitHub mark's beside it. -->
@@ -67,3 +74,4 @@
     >
   </a>
 </header>
+</div>

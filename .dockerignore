@@ -3,6 +3,11 @@ node_modules
 .git
 build
 .svelte-kit
+.svelte-kit-demo
 test-results
+tests
 screenshots
+clips
+docs
 .env
+*.sqlite

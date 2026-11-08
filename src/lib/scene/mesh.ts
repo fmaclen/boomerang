@@ -1,154 +1,64 @@
-import { clamp, lerp, sat } from './math';
-
-export interface Mesh {
-  pos: Float32Array;
-  nor: Float32Array;
-  idx: Uint16Array;
-  count: number;
-}
+import type { RGB } from './math';
 
 /**
- * The boomerang. Its outline is traced from a clean 2D shape: two bowed arms
- * tapering from a rounded elbow to rounded tips, filleted where they meet.
- * The body is a thin slab whose edges round over from the top face to the
- * bottom, so it reads as one solid piece from any angle, edge-on included.
+ * The boomerang: two bowed arms tapering from a rounded elbow to rounded
+ * tips, filleted where they meet, as a thin slab whose edges round over from
+ * the top face to the bottom, so it reads as one solid piece from any angle,
+ * edge-on included.
+ *
+ * The outline was traced once from a distance field with marching squares
+ * and spaced evenly by arc length (see mesh.ts at 35cf147): 72 points, each
+ * with its outward normal, as x, y, nx, ny. CAP is the top face cut into
+ * triangles by ear clipping; the bottom face is the same cut.
  */
-export function boomerangMesh(): Mesh {
-  const SEG = 48;
-  const N = 72;
-  const R = 0.065;
-  const arms = [-1, 1].map((side) =>
-    Array.from({ length: SEG + 1 }, (_, k) => {
-      const s = k / SEG;
-      return [side * 0.98 * s, 0.42 - 0.84 * s + 0.16 * Math.sin(Math.PI * s), lerp(0.25, 0.12, s)];
-    }),
-  );
-  const armD = (pts: number[][], x: number, y: number) => {
-    let best = Infinity;
-    for (let k = 0; k < SEG; k++) {
-      const [ax, ay, aw] = pts[k];
-      const [bx, by, bw] = pts[k + 1];
-      const dx = bx - ax;
-      const dy = by - ay;
-      const h = clamp(((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy), 0, 1);
-      const d = Math.hypot(x - ax - dx * h, y - ay - dy * h) - lerp(aw, bw, h);
-      if (d < best) best = d;
-    }
-    return best;
-  };
-  const sdf = (x: number, y: number) => {
-    const a = armD(arms[0], x, y);
-    const b = armD(arms[1], x, y);
-    const k = 0.1;
-    const h = sat(0.5 + (0.5 * (b - a)) / k);
-    return lerp(b, a, h) - k * h * (1 - h);
-  };
+const OUTLINE = [
+  -1.01, -.53618, -.25001, -.96824, -.92775, -.52791, .43582, -.90003, -.86612, -.4714, .76226, -.64727, -.81125, -.40728, .75589, -.65469,
+  -.75552, -.3439, .7493, -.66223, -.69934, -.28093, .73885, -.67387, -.64161, -.21939, .75981, -.65015, -.58225, -.15941, .70891, -.7053,
+  -.5209, -.1015, .67482, -.73799, -.45693, -.0465, .65874, -.75237, -.38975, .00455, .542, -.84038, -.31888, .05037, .45683, -.88956,
+  -.24397, .0892, .40019, -.91643, -.16557, .12033, .33566, -.94198, -.08267, .13541, .11161, -.99375, .00164, .13896, .00419, -.99999,
+  .08592, .13506, -.10556, -.99441, .16869, .11935, -.33122, -.94355, .24696, .08787, -.38564, -.92265, .32169, .04869, -.55435, -.83228,
+  .39241, .00266, -.52708, -.84982, .45942, -.04861, -.6445, -.76461, .52339, -.10363, -.66014, -.75114, .58461, -.16167, -.69415, -.71983,
+  .64383, -.22179, -.74543, -.66658, .70152, -.28337, -.73885, -.67387, .7577, -.34634, -.73317, -.68004, .81338, -.40976, -.75589, -.65469,
+  .86828, -.47386, -.74473, -.66737, .93067, -.52936, -.41114, -.91157, 1.01313, -.53523, .2763, -.96107, 1.07985, -.48643, .83258, -.5539,
+  1.09908, -.40605, .99321, .11636, 1.06524, -.32971, .86131, .50808, 1.02057, -.25812, .84901, .52837, .97588, -.18653, .86953, .49387,
+  .93037, -.11548, .80255, .59659, .88388, -.04506, .85789, .51383, .83603, .02442, .78252, .62263, .7866, .09281, .81648, .57737,
+  .73484, .15944, .78492, .6196, .68107, .22447, .7342, .67893, .62438, .28699, .7268, .68685, .56459, .34654, .7038, .71039,
+  .50168, .40276, .66686, .74518, .4355, .45512, .61763, .78647, .36637, .50352, .55826, .82967, .29573, .54968, .56796, .82306,
+  .22786, .59985, .60314, .79763, .1579, .647, .50335, .86408, .08153, .6826, .2965, .95503, -.00164, .69497, -.00595, .99998,
+  -.08464, .68159, -.30783, .95144, -.16072, .64535, -.51333, .85819, -.23048, .5979, -.57868, .81555, -.29842, .54782, -.57398, .81887,
+  -.3691, .50171, -.57067, .82118, -.43808, .45311, -.62984, .77672, -.50413, .40059, -.67889, .73424, -.5669, .34422, -.71574, .69837,
+  -.6266, .28459, -.73884, .67388, -.68326, .22204, -.74663, .66524, -.73694, .15694, -.73703, .67586, -.78854, .09017, -.82788, .5609,
+  -.83802, .02183, -.79546, .606, -.8856, -.04784, -.8689, .49498, -.93225, -.11815, -.81611, .5779, -.97754, -.18935, -.88114, .47286,
+  -1.02235, -.26086, -.80934, .58735, -1.06689, -.33253, -.87455, .48494, -1.09949, -.40929, -.99601, .08925, -1.07802, -.48914, -.81717, -.5764,
+];
+const CAP = [
+  30, 31, 32, 71, 0, 1, 69, 70, 71, 28, 29, 30, 30, 32, 33, 71, 1, 2, 28, 30, 33, 69, 71, 2, 50, 51, 52, 68, 69, 2, 68, 2, 3, 48, 49, 50,
+  28, 33, 34, 27, 28, 34, 52, 53, 54, 67, 68, 3, 67, 3, 4, 27, 34, 35, 26, 27, 35, 56, 57, 58, 44, 45, 46, 61, 62, 63, 39, 40, 41, 58, 59, 60,
+  42, 43, 44, 66, 67, 4, 66, 4, 5, 63, 64, 65, 37, 38, 39, 26, 35, 36, 25, 26, 36, 65, 66, 5, 65, 5, 6, 25, 36, 37, 24, 25, 37, 23, 24, 37,
+  23, 37, 39, 22, 23, 39, 65, 6, 7, 63, 65, 7, 63, 7, 8, 47, 48, 50, 52, 54, 55, 21, 22, 39, 21, 39, 41, 20, 21, 41, 20, 41, 42, 63, 8, 9,
+  61, 63, 9, 61, 9, 10, 60, 61, 10, 55, 56, 58, 44, 46, 47, 19, 20, 42, 60, 10, 11, 58, 60, 11, 19, 42, 44, 18, 19, 44, 58, 11, 12, 17, 18, 44,
+  58, 12, 13, 55, 58, 13, 17, 44, 47, 16, 17, 47, 55, 13, 14, 47, 50, 52, 15, 16, 47, 55, 14, 15, 15, 47, 52, 15, 52, 55,
+];
 
-  // Trace the zero contour with marching squares, then chain the crossings.
-  const X0 = -1.2;
-  const Y0 = -0.72;
-  const G = 0.01;
-  const NX = 240;
-  const NY = 146;
-  const v = new Float64Array((NX + 1) * (NY + 1));
-  for (let j = 0; j <= NY; j++) for (let i = 0; i <= NX; i++) v[j * (NX + 1) + i] = sdf(X0 + i * G, Y0 + j * G);
-  const V = (i: number, j: number) => v[j * (NX + 1) + i];
-  const pt = new Map<number, [number, number]>();
-  const link = new Map<number, number[]>();
-  const edge = (i: number, j: number, vert: boolean) => {
-    const key = (j * (NX + 1) + i) * 2 + (vert ? 1 : 0);
-    if (!pt.has(key)) {
-      const va = V(i, j);
-      const vb = vert ? V(i, j + 1) : V(i + 1, j);
-      const f = va / (va - vb);
-      pt.set(key, [X0 + (i + (vert ? 0 : f)) * G, Y0 + (j + (vert ? f : 0)) * G]);
-    }
-    return key;
-  };
-  const join = (a: number, b: number) => {
-    if (!link.has(a)) link.set(a, []);
-    if (!link.has(b)) link.set(b, []);
-    link.get(a)!.push(b);
-    link.get(b)!.push(a);
-  };
-  for (let j = 0; j < NY; j++) {
-    for (let i = 0; i < NX; i++) {
-      const ins = [V(i, j) < 0, V(i + 1, j) < 0, V(i + 1, j + 1) < 0, V(i, j + 1) < 0];
-      // Edges: 0 bottom, 1 right, 2 top, 3 left, each between two corners.
-      const E: (number | undefined)[] = [];
-      if (ins[0] !== ins[1]) E[0] = edge(i, j, false);
-      if (ins[1] !== ins[2]) E[1] = edge(i + 1, j, true);
-      if (ins[3] !== ins[2]) E[2] = edge(i, j + 1, false);
-      if (ins[0] !== ins[3]) E[3] = edge(i, j, true);
-      const crossed = [0, 1, 2, 3].filter((k) => E[k] !== undefined);
-      if (crossed.length === 2) join(E[crossed[0]]!, E[crossed[1]]!);
-      else if (crossed.length === 4) {
-        const mid = V(i, j) + V(i + 1, j) + V(i + 1, j + 1) + V(i, j + 1) < 0;
-        if (mid === ins[0]) {
-          join(E[0]!, E[1]!);
-          join(E[2]!, E[3]!);
-        } else {
-          join(E[3]!, E[0]!);
-          join(E[1]!, E[2]!);
-        }
-      }
-    }
-  }
-  const start = link.keys().next().value as number;
-  const loop: [number, number][] = [];
-  for (let prev = -1, cur = start; ; ) {
-    loop.push(pt.get(cur)!);
-    const nb = link.get(cur)!;
-    const next = nb[0] !== prev ? nb[0] : nb[1];
-    prev = cur;
-    cur = next;
-    if (cur === start) break;
-  }
-  // Even spacing by arc length, counter-clockwise.
-  let area = 0;
-  for (let k = 0; k < loop.length; k++) {
-    const a = loop[k];
-    const b = loop[(k + 1) % loop.length];
-    area += a[0] * b[1] - b[0] * a[1];
-  }
-  if (area < 0) loop.reverse();
-  const cum = [0];
-  for (let k = 1; k <= loop.length; k++) {
-    const a = loop[k - 1];
-    const b = loop[k % loop.length];
-    cum.push(cum[k - 1] + Math.hypot(b[0] - a[0], b[1] - a[1]));
-  }
-  const outline: [number, number][] = [];
-  for (let n = 0, k = 0; n < N; n++) {
-    const target = (cum[loop.length] * n) / N;
-    while (cum[k + 1] < target) k++;
-    const f = (target - cum[k]) / (cum[k + 1] - cum[k]);
-    const a = loop[k];
-    const b = loop[(k + 1) % loop.length];
-    outline.push([lerp(a[0], b[0], f), lerp(a[1], b[1], f)]);
-  }
-  const nrm2 = outline.map(([x, y]) => {
-    const e = 1e-3;
-    const gx = sdf(x + e, y) - sdf(x - e, y);
-    const gy = sdf(x, y + e) - sdf(x, y - e);
-    const L = Math.hypot(gx, gy);
-    return [gx / L, gy / L];
-  });
+/** How far the edge rounds over, as a share of the arm's half width. */
+const R = 0.065;
 
+export function boomerangMesh(): { pos: Float32Array; nor: Float32Array; idx: Uint16Array; count: number } {
+  const N = OUTLINE.length / 4;
   // Rings round the rounded edge, from the top face (0) to the bottom (4).
   // The faces' own normals lean out a little at the rim, which domes them.
   const PHI = [0, Math.PI / 4, Math.PI / 2, (3 * Math.PI) / 4, Math.PI];
   const PSI = [0.32, Math.PI / 4, Math.PI / 2, (3 * Math.PI) / 4, Math.PI - 0.32];
   const pos: number[] = [];
   const nor: number[] = [];
-  PHI.forEach((ph, j) =>
-    outline.forEach(([x, y], i) => {
-      const [nx, ny] = nrm2[i];
+  PHI.forEach((ph, j) => {
+    for (let i = 0; i < N; i++) {
+      const [x, y, nx, ny] = OUTLINE.slice(i * 4, i * 4 + 4);
       const inset = R * (1 - Math.sin(ph));
       pos.push(x - nx * inset, y - ny * inset, R * Math.cos(ph));
       nor.push(nx * Math.sin(PSI[j]), ny * Math.sin(PSI[j]), Math.cos(PSI[j]));
-    }),
-  );
+    }
+  });
   const tris: number[][] = [];
   for (let j = 0; j < 4; j++) {
     for (let i = 0; i < N; i++) {
@@ -157,60 +67,21 @@ export function boomerangMesh(): Mesh {
       tris.push([a, b, b + N], [a, b + N, a + N]);
     }
   }
-  // The faces: clip ears off the top face's outline, shortest cut first.
-  const face = outline.map((_, i) => [pos[i * 3], pos[i * 3 + 1]]);
-  const cr = (a: number[], b: number[], c: number[]) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
-  const idx = face.map((_, i) => i);
-  const cap: number[][] = [];
-  while (idx.length > 3) {
-    let best = -1;
-    let bestL = Infinity;
-    for (let k = 0; k < idx.length; k++) {
-      const i0 = idx[(k + idx.length - 1) % idx.length];
-      const i1 = idx[k];
-      const i2 = idx[(k + 1) % idx.length];
-      const a = face[i0];
-      const b = face[i1];
-      const c = face[i2];
-      if (cr(a, b, c) <= 1e-9) continue;
-      const L = Math.hypot(c[0] - a[0], c[1] - a[1]);
-      if (L >= bestL) continue;
-      let clear = true;
-      for (const m of idx) {
-        if (m === i0 || m === i1 || m === i2) continue;
-        const p = face[m];
-        if (cr(a, b, p) >= 0 && cr(b, c, p) >= 0 && cr(c, a, p) >= 0) {
-          clear = false;
-          break;
-        }
-      }
-      if (clear) {
-        best = k;
-        bestL = L;
-      }
-    }
-    if (best < 0) break;
-    cap.push([idx[(best + idx.length - 1) % idx.length], idx[best], idx[(best + 1) % idx.length]]);
-    idx.splice(best, 1);
-  }
-  if (idx.length === 3) cap.push(idx.slice());
-  for (const [a, b, c] of cap) {
-    tris.push([a, b, c]);
-    tris.push([a + 4 * N, b + 4 * N, c + 4 * N]);
+  for (let k = 0; k < CAP.length; k += 3) {
+    const [a, b, c] = CAP.slice(k, k + 3);
+    tris.push([a, b, c], [a + 4 * N, b + 4 * N, c + 4 * N]);
   }
   // Wind every triangle to face out along its normals.
-  const out = new Uint16Array(tris.length * 3);
+  const idx = new Uint16Array(tris.length * 3);
+  const at = (q: number): RGB => [pos[q * 3], pos[q * 3 + 1], pos[q * 3 + 2]];
   tris.forEach(([a, b, c], k) => {
-    const P = (q: number) => [pos[q * 3], pos[q * 3 + 1], pos[q * 3 + 2]];
-    const pa = P(a);
-    const pb = P(b);
-    const pc = P(c);
+    const [pa, pb, pc] = [at(a), at(b), at(c)];
     const u = [pb[0] - pa[0], pb[1] - pa[1], pb[2] - pa[2]];
     const w = [pc[0] - pa[0], pc[1] - pa[1], pc[2] - pa[2]];
     const g = [u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]];
     let dot = 0;
     for (const q of [a, b, c]) dot += g[0] * nor[q * 3] + g[1] * nor[q * 3 + 1] + g[2] * nor[q * 3 + 2];
-    out.set(dot >= 0 ? [a, b, c] : [a, c, b], k * 3);
+    idx.set(dot >= 0 ? [a, b, c] : [a, c, b], k * 3);
   });
-  return { pos: new Float32Array(pos), nor: new Float32Array(nor), idx: out, count: out.length };
+  return { pos: new Float32Array(pos), nor: new Float32Array(nor), idx, count: idx.length };
 }

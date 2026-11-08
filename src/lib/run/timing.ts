@@ -41,8 +41,6 @@ export const RES_MOVE = 1.4;
 /** New test back to idle. */
 export const EXIT_END = 0.75;
 
-/** The number reads ten times a second, like a meter. */
-export const TICK = 0.1;
 /** A phase change rolls the eye's words over ROLL_PHASE, a unit change over ROLL; a catch lifts the old reading over CATCH_LEAD and settles the new one over CATCH_SETTLE. */
 export const ROLL_PHASE = 1.2;
 export const ROLL = 0.55;

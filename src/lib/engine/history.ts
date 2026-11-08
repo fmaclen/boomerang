@@ -1,124 +1,128 @@
-import type { HistoryMode, Result } from './types';
+import { pastRuns } from './simulate';
+import { parseResult, parseSummary, summaryOf } from './stored';
+import type { HistoryMode, Result, Summary } from './types';
 
 // Where finished runs are kept. On a box (the default) they live in the box's
-// store under /runs, so every browser sees the same History; with the shell's
-// boomerang-history tag set to `browser` they stay in this browser's
-// localStorage and the page never calls /runs. Either way the page reads a
-// copy held here, newest first, which loadResults fills.
+// store under /runs, so every browser sees the same History; a box started
+// with HISTORY=browser keeps them in each browser's localStorage instead, and
+// says so the first time the page asks /runs for a list. The demo has no box,
+// so it is always the latter. Nothing here holds the page up: the home screen
+// never asks for runs, and every request gives up after REQUEST_MS.
 
 /** This browser's own runs: a JSON array of Result, newest first. */
-export const HISTORY_KEY = 'boomerang.history';
-/** Set once this browser's own runs have been sent to the box, so a later Clear stays cleared. */
-const IMPORTED_KEY = 'boomerang.imported';
-/** How long a load waits on the box before showing what it has; a dead store must not hang the page. */
-const LOAD_MS = 2000;
+const HISTORY_KEY = 'boomerang.history';
+/** History shows ten runs, and ten more at a time. */
+export const PAGE = 10;
+const REQUEST_MS = 5000;
 
-let runs: Result[] = [];
-/** Finished runs the box did not take, kept in this page's list until a Clear. */
+/** Where runs are kept, once known. */
+let mode: HistoryMode | undefined = import.meta.env.MODE === 'demo' ? 'browser' : undefined;
+/** Whole runs this page already has: ones it ran, and ones it reopened. */
+const held = new Map<string, Result>();
+/** Runs this page finished that the box has not confirmed yet, listed until it does. */
 let unsaved: Result[] = [];
-/** Bumped by every save and clear, so a load that started before one cannot undo it when it lands. */
-let version = 0;
 
-/** Where this box keeps runs, read from the shell's boomerang-history tag. The landing page's demo has no box, so its runs stay in the browser. */
-export function historyMode(): HistoryMode {
-  if (import.meta.env.MODE === 'demo') return 'browser';
-  const content = document.querySelector('meta[name="boomerang-history"]')?.getAttribute('content');
-  return content === 'browser' ? 'browser' : 'box';
-}
+/** Bumped by every clear, so a list that set out before one cannot bring its runs back. */
+let generation = 0;
 
-/** The runs as last loaded, newest first. */
-export function listResults(): Result[] {
-  return runs;
-}
+/** Where runs are kept: known once History has been listed, and the box until then. */
+export const historyMode = (): HistoryMode => mode ?? 'box';
 
-export function getResult(id: string): Result | undefined {
-  return runs.find((r) => r.id === id);
+export interface Page {
+  runs: Summary[];
+  more: boolean;
+  /** Where the next page starts in the store: counted in stored runs, not rows shown. */
+  next: number;
+  /** The box could not be reached: only this page's own runs are listed. */
+  failed?: boolean;
 }
 
 /**
- * Fetches the runs afresh and returns them. On a box, the first load also
- * sends the box this browser's own runs. When the box does not answer in
- * time, the runs already held are kept.
+ * A page of runs, newest first, from the store's from-th; null when a clear
+ * has happened since it was asked for. A run this page finished shows at
+ * once on the first page, whether or not the box has taken it yet.
  */
-export async function loadResults(): Promise<Result[]> {
-  const at = version;
-  if (historyMode() === 'browser') {
-    runs = readLocal();
-    return runs;
+export async function listRuns(from: number): Promise<Page | null> {
+  const asked = generation;
+  if (mode === 'browser') {
+    const all = readLocal();
+    return { runs: all.slice(from, from + PAGE).map(summaryOf), more: all.length > from + PAGE, next: from + PAGE };
   }
-  const signal = AbortSignal.timeout(LOAD_MS);
-  try {
-    await importLocal(signal);
-    const response = await fetch('/runs', { signal, cache: 'no-store' });
-    if (!response.ok) return runs;
-    const body: unknown = await response.json();
-    if (!Array.isArray(body) || at !== version) return runs;
-    const stored = body as Result[];
-    const missing = unsaved.filter((u) => !stored.some((r) => r.id === u.id));
-    runs = [...missing, ...stored].sort((a, b) => b.startedAt - a.startedAt);
-  } catch {
-    // The box is away; History shows what it already had.
+  const body = await request(`/runs?from=${from}`).then((r) => (r?.ok ? r.json() : null)).catch(() => null);
+  if (asked !== generation) return null;
+  if (body?.history === 'browser') {
+    mode = 'browser';
+    return listRuns(from);
   }
-  return runs;
+  const mine = from ? [] : unsaved.map(summaryOf);
+  if (!body || !Array.isArray(body.runs)) return { runs: mine, more: false, next: from, failed: true };
+  mode = 'box';
+  const runs = body.runs.map(parseSummary).filter((r: Summary | null): r is Summary => !!r);
+  const missing = mine.filter((u) => !runs.some((r: Summary) => r.id === u.id));
+  return { runs: [...missing, ...runs].sort((a, b) => b.startedAt - a.startedAt), more: body.more === true, next: from + body.runs.length };
 }
 
-/** Keeps a finished run. A box that cannot take it does not fail the run: it stays in this page's list. */
-export async function saveResult(result: Result): Promise<void> {
-  version++;
-  runs = [result, ...runs.filter((r) => r.id !== result.id)];
-  if (historyMode() === 'browser') {
-    writeLocal([result, ...readLocal().filter((r) => r.id !== result.id)]);
-    return;
-  }
-  const status = await postRun(result).catch(() => 0);
-  if (status < 200 || status >= 300) unsaved.push(result);
+/** A whole run, samples and all, to reopen it. */
+export async function getRun(id: string): Promise<Result | null> {
+  if (!mode) await listRuns(0);
+  const known = held.get(id) ?? (mode === 'browser' ? readLocal().find((r) => r.id === id) : undefined);
+  if (known) return known;
+  if (mode === 'browser') return null;
+  const run = parseResult(await request(`/runs/${encodeURIComponent(id)}`).then((r) => (r?.ok ? r.json() : null)).catch(() => null));
+  if (run) held.set(run.id, run);
+  return run;
 }
 
-/** Empties History: the box's store, every browser's, or this browser's own runs. */
-export async function clearResults(): Promise<void> {
-  version++;
-  runs = [];
+/** Keeps a finished run. Resolves whether it was kept; a box that cannot take it does not fail the run, which stays listed in this page. */
+export async function saveRun(run: Result): Promise<boolean> {
+  held.set(run.id, run);
+  if (!mode) await listRuns(0);
+  if (mode === 'browser') return writeLocal([run, ...readLocal().filter((r) => r.id !== run.id)]);
+  unsaved = [run, ...unsaved];
+  const response = await request('/runs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(run) });
+  if (!response?.ok) return false;
+  unsaved = unsaved.filter((u) => u.id !== run.id);
+  return true;
+}
+
+/** Empties History: the box's store, or this browser's own runs, and every run this page holds. Resolves whether it did. */
+export async function clearRuns(): Promise<boolean> {
+  generation++;
+  // Typed, so the server does not take it for a cross-site form submission
+  // (a DELETE can't be sent cross-site without the box's say-so anyway).
+  const ok = mode === 'browser' ? writeLocal([]) : !!(await request('/runs', { method: 'DELETE', headers: { 'Content-Type': 'application/json' } }))?.ok;
+  if (!ok) return false;
+  generation++;
   unsaved = [];
-  if (historyMode() === 'browser') {
-    writeLocal([]);
-    return;
-  }
-  await fetch('/runs', { method: 'DELETE' }).catch(() => {});
+  held.clear();
+  return true;
 }
 
-/**
- * Sends this browser's own runs to the box once. Ids make a repeat harmless,
- * so a load cut short, or a store that failed, simply tries again next time;
- * a run the box refuses as malformed is left out for good.
- */
-async function importLocal(signal: AbortSignal): Promise<void> {
-  if (localStorage.getItem(IMPORTED_KEY)) return;
-  const statuses = await Promise.all(readLocal().map((r) => postRun(r, signal)));
-  if (statuses.some((status) => status !== 400 && (status < 200 || status >= 300))) return;
-  localStorage.setItem(IMPORTED_KEY, '1');
+function request(path: string, init: RequestInit = {}): Promise<Response | null> {
+  return fetch(path, { ...init, cache: 'no-store', signal: AbortSignal.timeout(REQUEST_MS) }).catch(() => null);
 }
 
-/** Resolves to the box's status; rejects only when the box cannot be reached. */
-async function postRun(result: Result, signal?: AbortSignal): Promise<number> {
-  const response = await fetch('/runs', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(result),
-    signal,
-  });
-  return response.status;
-}
-
+// Storage can be off or full, and its contents are this browser's to damage:
+// every read is checked run by run, and a failed write says so.
 function readLocal(): Result[] {
   try {
-    const raw = localStorage.getItem(HISTORY_KEY);
-    const parsed: unknown = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? (parsed as Result[]) : [];
+    let raw = localStorage.getItem(HISTORY_KEY);
+    if (raw === null && import.meta.env.MODE === 'demo') {
+      raw = JSON.stringify(pastRuns());
+      localStorage.setItem(HISTORY_KEY, raw);
+    }
+    const parsed: unknown = JSON.parse(raw ?? '[]');
+    return Array.isArray(parsed) ? parsed.map(parseResult).filter((r): r is Result => !!r) : [];
   } catch {
     return [];
   }
 }
 
-function writeLocal(results: Result[]): void {
-  localStorage.setItem(HISTORY_KEY, JSON.stringify(results));
+function writeLocal(runs: Result[]): boolean {
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(runs));
+    return true;
+  } catch {
+    return false;
+  }
 }

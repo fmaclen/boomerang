@@ -4,7 +4,6 @@ node_modules/
 test-results/
 build/
 .svelte-kit/
-.DS_Store
-.svelte-kit-site/
 .svelte-kit-demo/
-site/build/
+*.sqlite
+.DS_Store

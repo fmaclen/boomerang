@@ -1,12 +1,4 @@
-import { loadResults } from '../lib/engine';
-
-// A single-page app: the page is built in the browser, and nginx serves the
-// same shell for every address.
+// The page is built in the browser; its two addresses, home and /history,
+// are the same shell, written out once at build time.
 export const ssr = false;
-export const prerender = false;
-
-// History's runs are in before the first frame, so a visit straight to
-// /history never shows the empty list first.
-export const load = async () => {
-  await loadResults();
-};
+export const prerender = true;

@@ -4,7 +4,7 @@
 // before download, a beat after download), so the scene never shows a
 // phase the measurement is not in.
 
-import { startRun, type Mode, type Progress, type Run } from '../engine';
+import { saveRun, startRun, type Mode, type Progress, type Run } from '../engine';
 import { RunData } from './data';
 import { FLY, LAND_DL, LAND_PING, LAND_UL, PING_AT, THROWS, TRIP } from './timing';
 import type { Swarm } from '../scene/swarm';
@@ -15,24 +15,38 @@ export class LiveRun {
   private clock: () => number;
   /** When the last throw leaves: as scheduled, or once the idle latency is in if that is later. */
   private lastLeave = Infinity;
-  private unsubscribe: () => void;
+  private stopped = false;
 
-  /** clock gives the run's time in seconds since Start. */
-  constructor(mode: Mode, swarms: { D: Swarm; U: Swarm }, clock: () => number) {
+  /**
+   * clock gives the run's time in seconds since Start. The result shows the
+   * moment it is measured, and is saved beside it: a slow or absent store
+   * never holds it up. onSaved hears its id once it is kept.
+   */
+  constructor(mode: Mode, swarms: { D: Swarm; U: Swarm }, clock: () => number, onSaved: (id: string) => void) {
     this.clock = clock;
     this.data = new RunData(mode, swarms);
-    this.run = startRun(mode, { before: (phase) => this.beat(phase) });
-    this.unsubscribe = this.run.subscribe((p) => this.progress(p));
+    this.run = startRun(mode, (p) => this.stopped || this.progress(p), (phase) => this.beat(phase));
     this.run.done.then(
-      () => this.unsubscribe(),
-      () => this.unsubscribe(),
+      (r) => {
+        const d = this.data;
+        d.result = r;
+        d.bytes = r.download.bytes + r.upload.bytes;
+        d.P.r0 = Math.max(d.P.ulEnd + LAND_UL, this.clock());
+        void saveRun(r).then((kept) => kept && !this.stopped && onSaved(r.id));
+      },
+      (error: unknown) => {
+        if (this.stopped) return;
+        // The reason a run failed (a refused upload, an unreachable box) is in the console.
+        console.warn('Boomerang: the run failed:', error);
+        this.data.fail(this.clock(), error instanceof Error ? error.message : String(error));
+      },
     );
   }
 
+  /** Stop: nothing more is shown, and nothing is saved. */
   abort(): void {
-    this.unsubscribe();
+    this.stopped = true;
     this.run.abort();
-    this.run.done.catch(() => {});
   }
 
   /** Throws each ping boomerang when its time comes. Called every frame. */
@@ -83,12 +97,5 @@ export class LiveRun {
       d.bytes = p.download!.bytes + p.upload.bytes;
       d.phaseEnd(1, t, p.upload.mbps);
     }
-    if (p.phase === 'done' && p.result) {
-      const r = p.result;
-      d.result = r;
-      d.bytes = r.download.bytes + r.upload.bytes;
-      d.P.r0 = Math.max(d.P.ulEnd + LAND_UL, t);
-    }
-    if (p.phase === 'error') d.fail(t);
   }
 }

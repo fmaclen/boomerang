@@ -1,13 +1,12 @@
-import { HISTORY_KEY } from './history';
 import type { Network, Streams } from './measure';
 import type { Device, Result, Sample, Transfer } from './types';
 
-// The landing page's demo (`vite build --mode demo`) has no box to measure.
-// Its runs read a simulated link instead: an ordinary wired gigabit network
+// The public demo (`vite build --mode demo`) has no box to measure. Its runs
+// read a simulated link instead: an ordinary wired gigabit network
 // at home, a few milliseconds away, that delivers a little over 900 Mbps each
 // way and wobbles the way a real run does. Only the readings are made up;
 // the run itself is the engine's own (see measure.ts), and nothing is sent
-// anywhere. seedHistory fills the demo's History with a few past runs.
+// anywhere. pastRuns fills the demo's History with a few past runs.
 
 /** Bytes are delivered this often, as a real stream's chunks would arrive. */
 const CHUNK_MS = 20;
@@ -46,64 +45,49 @@ function link() {
     downloadMbps: between(918, 946),
     uploadMbps: between(884, 928),
     idleMs: between(2.2, 4.2),
-    /** What a loaded link adds to the round trip: the buffers filling. */
-    downloadExtraMs: between(4, 9),
-    uploadExtraMs: between(2, 6),
   };
 }
 
 export function simulatedNetwork(): Network {
   const l = link();
-  let loaded: 'download' | 'upload' | null = null;
-
   const streams =
-    (kind: 'download' | 'upload', target: number): Streams =>
+    (target: number): Streams =>
     (onBytes, _fail, signal) => {
       const flow = new Flow(target);
       let last = performance.now();
-      loaded = kind;
       const timer = setInterval(() => {
         const now = performance.now();
         const dt = (now - last) / 1000;
         last = now;
         onBytes(Math.round((flow.step(dt) * 1e6 * dt) / 8));
       }, CHUNK_MS);
-      signal.addEventListener(
-        'abort',
-        () => {
-          clearInterval(timer);
-          loaded = null;
-        },
-        { once: true },
-      );
+      signal.addEventListener('abort', () => clearInterval(timer), { once: true });
     };
 
   return {
     ping(signal) {
-      const extra = loaded === 'download' ? l.downloadExtraMs : loaded === 'upload' ? l.uploadExtraMs : 0;
-      const ms = roundTrip(l.idleMs, extra);
+      const ms = roundTrip(l.idleMs);
       return new Promise((resolve, reject) => {
         const timer = setTimeout(() => resolve(ms), ms);
         signal.addEventListener(
           'abort',
           () => {
             clearTimeout(timer);
-            reject(new DOMException('Run aborted', 'AbortError'));
+            reject(signal.reason);
           },
           { once: true },
         );
       });
     },
-    download: streams('download', l.downloadMbps),
-    upload: streams('upload', l.uploadMbps),
+    download: streams(l.downloadMbps),
+    upload: streams(l.uploadMbps),
   };
 }
 
-/** A round trip: the base, what load adds with most of its own spread, a little noise, and a rare slow one. */
-function roundTrip(idleMs: number, extraMs: number): number {
-  const spread = extraMs ? extraMs * between(0.6, 1.5) : 0;
+/** A round trip: the base, a little noise, and a rare slow one. */
+function roundTrip(idleMs: number): number {
   const slow = Math.random() < 0.08 ? between(1, 3) : 0;
-  return idleMs + spread + Math.abs(gauss()) * 0.5 + slow;
+  return idleMs + Math.abs(gauss()) * 0.5 + slow;
 }
 
 // ---------------------------------------------------------------------------
@@ -120,20 +104,10 @@ const PAST: { daysAgo: number; device: Device; reach: number; mode?: 'fixed' }[]
   { daysAgo: 9.5, device: { os: 'macOS', form: 'Desktop', browser: 'Firefox' }, reach: 0.97 },
 ];
 
-/**
- * Fills the demo's History with a few past runs the first time it is opened
- * in a browser, so the list has something to show before the visitor's own
- * run lands in it. Once seeded (or cleared), it is left alone.
- */
-export function seedHistory(): void {
-  try {
-    if (localStorage.getItem(HISTORY_KEY) !== null) return;
-    const now = Date.now();
-    const runs = PAST.map((p) => pastRun(now - p.daysAgo * DAY, p.device, p.reach, p.mode ?? 'adaptive'));
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(runs));
-  } catch {
-    // Storage blocked: the demo runs with an empty History.
-  }
+/** A few past runs, so the demo's History has something to show before the visitor's own run lands in it. */
+export function pastRuns(): Result[] {
+  const now = Date.now();
+  return PAST.map((p) => pastRun(now - p.daysAgo * DAY, p.device, p.reach, p.mode ?? 'adaptive'));
 }
 
 function pastRun(startedAt: number, device: Device, reach: number, mode: 'adaptive' | 'fixed'): Result {
@@ -141,7 +115,7 @@ function pastRun(startedAt: number, device: Device, reach: number, mode: 'adapti
   const seconds = () => (mode === 'fixed' ? 30 : between(3.2, 5));
   const wifi = reach < 0.9;
   const idleMs = l.idleMs + (wifi ? between(2, 5) : 0);
-  const pings = Array.from({ length: 10 }, () => roundTrip(idleMs, 0));
+  const pings = Array.from({ length: 10 }, () => roundTrip(idleMs));
   return {
     id: `demo-${startedAt.toString(36)}`,
     startedAt,
@@ -151,8 +125,6 @@ function pastRun(startedAt: number, device: Device, reach: number, mode: 'adapti
     latency: {
       idleMs: median(pings),
       jitterMs: pings.slice(1).reduce((sum, p, i) => sum + Math.abs(p - pings[i]), 0) / (pings.length - 1),
-      downloadMs: roundTrip(idleMs, l.downloadExtraMs * (wifi ? 2 : 1)),
-      uploadMs: roundTrip(idleMs, l.uploadExtraMs * (wifi ? 2 : 1)),
     },
     device,
   };
