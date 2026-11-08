@@ -33,7 +33,7 @@ jobs:
         run: bun run check
 
       - name: Unit and server tests
-        run: bun test
+        run: bun test --isolate
 
       # Builds the box and the demo, then runs the browser tests with WebGL off.
       - name: Playwright
